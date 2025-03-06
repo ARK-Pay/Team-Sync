@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { BiChat, BiFile, BiX, BiDownload, BiDownArrowAlt } from 'react-icons/bi';
+import { BiChat, BiFile, BiX, BiDownload, BiDownArrowAlt, BiMicrophone } from 'react-icons/bi';
 import { 
   FaFileWord, FaFilePdf, FaFileExcel, FaFileImage, 
   FaFileAudio, FaFileVideo, FaFileArchive, FaFileCode,
   FaFileCsv, FaFileAlt
 } from 'react-icons/fa';
 import { toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-  
+
+
   const ChatModal = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState('');
@@ -21,6 +21,13 @@ import 'react-toastify/dist/ReactToastify.css';
   const [showScrollButton, setShowScrollButton] = useState(false);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [audioBlob, setAudioBlob] = useState(null);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+
 
   // Get file icon based on file type
   const getFileIcon = (fileType) => {
@@ -351,9 +358,79 @@ import 'react-toastify/dist/ReactToastify.css';
   };
   
 
-  // Handle search function
+  // New recording handlers
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+        setAudioBlob(blob);
+        audioChunksRef.current = [];
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+    } catch (err) {
+      toast.error('Microphone access required for voice messages');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (mediaRecorderRef.current.stream) {
+        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      }
+    }
+  };
+
+  // Recording duration timer
+  useEffect(() => {
+    let interval;
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingTime((time) => {
+          if (time >= 120) { // 2 minute limit
+            stopRecording();
+            return 120;
+          }
+          return time + 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isRecording]);
+
+  // Audio preview component
+  const AudioPreview = () => (
+    <div className="mt-2 p-2 bg-gray-100 rounded-lg">
+      <audio controls src={audioUrl} className="w-full" />
+      <button
+        onClick={() => {
+          URL.revokeObjectURL(audioUrl);
+          setAudioUrl(null);
+          setAudioBlob(null);
+        }}
+        className="mt-2 text-red-600 text-sm hover:text-red-700"
+      >
+        Remove Audio
+      </button>
+    </div>
+  );
+
+  // Update sendMessage to handle audio
   const sendMessage = async () => {
-    if (message.trim() !== '' || media) {
+    if (message.trim() !== '' || media || audioBlob) {
       try {
         const token = localStorage.getItem('token');
         const projectId = localStorage.getItem('project_id');
@@ -377,9 +454,21 @@ import 'react-toastify/dist/ReactToastify.css';
             await sendRequestToServer(requestBody, token);
           };
           reader.readAsDataURL(media);
-        } else {
-          await sendRequestToServer(requestBody, token);
         }
+        if (audioBlob) {
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            requestBody.file = {
+              fileName: `recording-${Date.now()}.webm`,
+              fileType: 'audio/webm',
+              fileSize: audioBlob.size,
+              data: e.target.result.split(',')[1]
+            };
+            await sendRequestToServer(requestBody, token);
+          };
+          reader.readAsDataURL(audioBlob);
+        }
+        await sendRequestToServer(requestBody, token);
       } catch (error) {
         console.error('Error sending message:', error);
         toast.error('Failed to send your message. Please try again.');
@@ -460,9 +549,9 @@ import 'react-toastify/dist/ReactToastify.css';
       </button>
 
       {isOpen && (
-        <div className="fixed z-10 top-20 right-5 bg-transparent">
+        <div className="fixed z-10 top-20 right-5 bg-transparent w-[520px]">
           <div className="flex items-center justify-center min-h-[300px]">
-            <div className="bg-white rounded-2xl shadow-2xl sm:max-w-md w-full overflow-hidden border border-gray-200">
+            <div className="bg-white rounded-2xl shadow-2xl w-full overflow-hidden border border-gray-200" style={{ maxWidth: '95vw' }}>
               {/* Chat Header */}
               <div className="bg-blue-950 px-4 py-4 border-b border-gray-950 shadow-md">
                 <h3 className="text-lg font-bold text-white">Chat Room</h3>
@@ -472,7 +561,7 @@ import 'react-toastify/dist/ReactToastify.css';
               <div className="relative">
                 <div
                   ref={messagesContainerRef}
-                  className="px-4 py-5 h-80 overflow-y-auto space-y-3 bg-gray-50"
+                  className="px-4 py-5 h-[400px] overflow-y-auto space-y-3 bg-gray-50"
                   onScroll={handleScroll}
                 >
                   {messages.map((msg) => (
@@ -534,57 +623,75 @@ import 'react-toastify/dist/ReactToastify.css';
               </div>
 
               {/* Input Area */}
-              <div className="bg-gray-200 px-4 py-4 flex flex-col border-t border-gray-300">
-                {mediaPreview && (
-                  <div className="mb-3">
-                    <MediaPreview preview={mediaPreview} />
-                  </div>
-                )}
-                <div className="flex items-center space-x-3">
-                  <input
-                    type="text"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    className="flex-grow border border-gray-300 rounded-full p-2 px-4 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Type a message..."
-                    onKeyPress={(e) => {
-                      if (
-                        e.key === "Enter" &&
-                        (message.trim() || mediaPreview)
-                      ) {
-                        sendMessage();
-                      }
-                    }}
-                  />
-
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="file"
-                      onChange={handleMediaChange}
-                      className="hidden"
-                      accept="*/*"
+              <div className="bg-gray-200 px-4 py-4 border-t border-gray-300">
+                <div className="flex gap-3 items-end">
+                  {/* Textarea container (now 70% width) */}
+                  <div className="flex-1 relative" style={{ width: '70%' }}>
+                    <textarea
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      placeholder="Type your message..."
+                      className="w-full p-3 pr-20 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-gray-900"
+                      rows="3"
                     />
-                    <span className="bg-blue-950 text-white rounded-full p-2 shadow-md hover:bg-blue-900">
-                      🔗
-                    </span>
-                  </label>
-                  <button
-                    onClick={sendMessage}
-                    disabled={!message.trim() && !mediaPreview} // Disable the button when there's no message and no media
-                    className={`bg-blue-850 text-white rounded-full px-4 py-2 shadow-lg hover:bg-blue-900 ${
-                      !message.trim() && !mediaPreview
-                        ? "cursor-not-allowed bg-blue-950 text-gray-500"
-                        : ""
-                    }`}
-                  >
-                    ➤
-                  </button>
-                  <button
-                    onClick={() => setIsOpen(false)}
-                    className="text-gray-800 p-2 hover:text-red-500 rounded-full shadow-2xl font-semibold text-xl"
-                  >
-                    ✕
-                  </button>
+                    <div className="absolute right-3 bottom-3 flex items-center gap-2">
+                      {isRecording && (
+                        <div className="text-sm text-gray-600 bg-white px-2 py-1 rounded">
+                          {Math.floor(recordingTime / 60)}:
+                          {(recordingTime % 60).toString().padStart(2, '0')}
+                        </div>
+                      )}
+                      <button
+                        onClick={isRecording ? stopRecording : startRecording}
+                        className={`p-2 rounded-full ${
+                          isRecording 
+                            ? 'animate-pulse bg-red-500 text-white' 
+                            : 'bg-blue-950 text-white hover:bg-blue-900'
+                        }`}
+                      >
+                        <BiMicrophone className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Action buttons container (now 30% width) */}
+                  <div className="flex flex-col gap-3" style={{ width: '30%' }}>
+                    <div className="flex gap-2 justify-end">
+                      <label className="cursor-pointer">
+                        <input
+                          type="file"
+                          onChange={handleMediaChange}
+                          className="hidden"
+                          accept="*/*"
+                        />
+                        <span className="bg-blue-950 text-white rounded-full p-2 shadow-md hover:bg-blue-900 block">
+                          🔗
+                        </span>
+                      </label>
+                      
+                      <button
+                        onClick={sendMessage}
+                        disabled={!message.trim() && !mediaPreview && !audioBlob}
+                        className={`bg-blue-950 text-white rounded-full px-4 py-2 shadow-lg hover:bg-blue-900 text-sm ${
+                          !message.trim() && !mediaPreview && !audioBlob
+                            ? "cursor-not-allowed opacity-50"
+                            : ""
+                        }`}
+                      >
+                        Send
+                      </button>
+                      
+                      <button
+                        onClick={() => setIsOpen(false)}
+                        className="text-gray-800 p-1 hover:text-red-500 rounded-full shadow-2xl font-semibold text-lg"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    
+                    {audioUrl && <AudioPreview />}
+                    {mediaPreview && <MediaPreview preview={mediaPreview} />}
+                  </div>
                 </div>
               </div>
             </div>
