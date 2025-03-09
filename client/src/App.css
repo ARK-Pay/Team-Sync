@@ -1,89 +1,89 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
+/* Base container styling */
+.app-container {
+  min-height: 100vh;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+/* Theme variations */
+.app-container.light {
+  background-color: #f5f5f5;
+  color: #333;
+}
+
+.app-container.dark {
+  background-color: #001f3d;
+  color: #f5f5f5;
+}
 
 /* Styling for the main App container */
 .App {
-text-align: center;
+  text-align: center;
 }
 
 .App-logo {
-height: 40vmin;
-pointer-events: none;
+  height: 40vmin;
+  pointer-events: none;
 }
 
-/* Animation for logo spinning, only applies if user prefers normal motion */
+/* Animation for logo spinning */
 @media (prefers-reduced-motion: no-preference) {
-.App-logo {
-animation: App-logo-spin infinite 20s linear;
-}
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
+  }
 }
 
 /* Styling for the App header */
 .App-header {
-background-color: #282c34;
-min-height: 100vh;
-display: flex;
-flex-direction: column;
-align-items: center;
-justify-content: center;
-font-size: calc(10px + 2vmin);
-color: white;
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
 }
 
 /* Styling for the App link */
 .App-link {
-color: #1eb9e4;
+  color: #1eb9e4;
 }
 
 /* Keyframes for logo spinning animation */
 @keyframes App-logo-spin {
-from {
-transform: rotate(0deg);/* Start rotation at 0 degrees */
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
-to {
-transform: rotate(360deg);/* End rotation at 360 degrees (full circle) */
-}
-}
-/* src/App.css */
 
-/* Base container styling */
-.app-container {
-    font-family: Arial, sans-serif;
-    transition: background-color 0.3s, color 0.3s;
-  }
-  
-  /* Light theme */
-  .app-container.light {
-    background-color: #f5f5f5;
-    color: #333;
-  }
-  
-  /* Dark theme */
-  .app-container.dark {
-    background-color: #333;
-    color: #f5f5f5;
-  }
-  
-  /* Navbar styling */
-  .navbar {
-    display: flex;
-    justify-content: space-between;
-    padding: 10px 20px;
-    background-color: inherit;
-    color: inherit;
-  }
-  
+/* Navbar styling */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background-color: inherit;
+  color: inherit;
+}
+
 .theme-toggle:hover {
-  transform: scale(1.1); /* Slight zoom effect on hover */
+  transform: scale(1.1);
 }
 
 .theme-toggle.light {
-  background-color: darkblue; /* Dark blue for light theme */
+  background-color: darkblue;
 }
 
 .theme-toggle.dark {
-  background-color: white; /* White for dark theme */
-  color: darkblue; /* Change the icon color if needed */
+  background-color: white;
+  color: darkblue;
 }

@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import "./App.css";
+import "./index.css"; // Import Tailwind directives first
+import "./App.css"; // Import custom styles second
 import Home from "./pages/Home/Home";
-import { ThemeProvider } from "./context/ThemeContext";
+import { ThemeProvider } from "styled-components";
 import Navbar from "./pages/Home/components/Navbar";
-import { darkTheme } from "./utils/Theme";
+import { darkTheme, lightTheme } from "./utils/Theme";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
@@ -13,15 +14,15 @@ import { closeSnackbar } from "./redux/snackbarSlice";
 import ProjectDashboard from "./pages/Dashboard/project-dashboard/ProjectDashboard";
 import AdminDashboard from "./pages/Dashboard/admin-dashboard/AdminDashboard";
 import { RecoilRoot } from "recoil";
-import VideoChat from "./components/VideoChat";
+
 import VideoCallJoin from "./components/VideoCallJoin"; // New Component for joining a call
 import VideoConference from './components/VideoConference'; // Import from the components folder
-import AISummarizer from "./components/AISummarizer"; 
-import FolderUploadCodeEditor from "./pages/Dashboard/project-view/components/CodeEditor";
+
 
 // Main application component
 function App() {
   const [isLightMode, setIsLightMode] = useState(true);
+  const theme = isLightMode ? lightTheme : darkTheme;
 
   // Function to toggle the theme
   const toggleTheme = () => {
@@ -42,33 +43,32 @@ function App() {
   return (
     <RecoilRoot>
       <BrowserRouter>
-        <ThemeProvider theme={darkTheme}>
-          <Navbar />
+        <ThemeProvider theme={theme}>
+          <div className="app-container">
+            <Navbar />
+            <DndProvider backend={HTML5Backend}>
+              <Routes>
+                <Route exact path="/" element={<Home />} />
+                <Route exact path="/dashboard/user" element={<ProjectDashboard />} />
+                <Route exact path="/dashboard/admin" element={<AdminDashboard />} />
+                <Route exact path="/video-call" element={<VideoCallJoin />} />
+                <Route exact path="/video-call/:roomId" element={<VideoConference />} />
+              
+               
+              </Routes>
 
-
-          
-          <DndProvider backend={HTML5Backend}>
-            <Routes>
-              <Route exact path="/" element={<Home />} />
-              <Route exact path="/dashboard/user" element={<ProjectDashboard />} />
-              <Route exact path="/dashboard/admin" element={<AdminDashboard />} />
-              <Route exact path="/video-call" element={<VideoCallJoin />} />
-              <Route exact path="/video-call/:roomId" element={<VideoConference />} />
-              <Route path="/ai-summary" element={<AISummarizer />} />
-              <Route exact path="/code-editor" element={<FolderUploadCodeEditor />} />
-            </Routes>
-
-            {/* Snackbar for notifications */}
-            <Snackbar
-              open={snackbarState.open}
-              autoHideDuration={6000}
-              onClose={handleClose}
-            >
-              <Alert onClose={handleClose} severity={snackbarState.severity}>
-                {snackbarState.message}
-              </Alert>
-            </Snackbar>
-          </DndProvider>
+              {/* Snackbar for notifications */}
+              <Snackbar
+                open={snackbarState.open}
+                autoHideDuration={6000}
+                onClose={handleClose}
+              >
+                <Alert onClose={handleClose} severity={snackbarState.severity}>
+                  {snackbarState.message}
+                </Alert>
+              </Snackbar>
+            </DndProvider>
+          </div>
         </ThemeProvider>
       </BrowserRouter>
     </RecoilRoot>

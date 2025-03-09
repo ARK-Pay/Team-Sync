@@ -16,15 +16,13 @@ const IconItem = ({ icon, label, active = false, unreadCount = 0 }) => {
   return (
     <a
       href="#"
-      className={`flex items-center p-3 rounded-lg hover:bg-gray-100 group transition-colors relative
-        ${active ? 'bg-blue-50 text-blue-600' : 'text-gray-900'}`}
+      className={`sidebar-item ${active ? 'sidebar-item-active' : 'sidebar-item-inactive'}`}
     >
       <FontAwesomeIcon 
         icon={icon} 
-        className={`w-5 h-5 transition duration-75 
-          ${active ? 'text-blue-600' : 'text-gray-700 group-hover:text-gray-900'}`}
+        className={`sidebar-icon ${active ? 'text-blue-600' : 'text-gray-700 group-hover:text-gray-900'}`}
       />
-      <span className="flex-1 ms-3 whitespace-nowrap">{label}</span>
+      <span className="sidebar-text">{label}</span>
       {/* Display unread count if available */}
       {unreadCount > 0 && (
         <span className="absolute top-0 right-0 inline-flex items-center justify-center w-5 h-5 
