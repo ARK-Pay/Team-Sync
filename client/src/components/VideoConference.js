@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import "./VideoConference.css";
 import axios from "axios";
+import Whiteboard from "./Whiteboard";
 
 const socket = io("http://127.0.0.1:3001", {
   transports: ["websocket"],
@@ -19,6 +20,8 @@ const VideoConference = ({ roomId }) => {
   const [meetingSummary, setMeetingSummary] = useState("");
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [meetingTranscript, setMeetingTranscript] = useState("");
+  const [showWhiteboard, setShowWhiteboard] = useState(false);
+
 
   const myVideo = useRef();
   const screenVideo = useRef();
@@ -404,7 +407,9 @@ const downloadSummary = () => {
     window.location.href = "/video-call";
   };
 
-  
+  const toggleWhiteboard = () => {
+    setShowWhiteboard((prev) => !prev);
+  };
 
 
 return (
@@ -433,6 +438,8 @@ return (
         </div>
       )}
     </div>
+     {/* Whiteboard Component */}
+     <Whiteboard isVisible={showWhiteboard} />
 
     <div className="call-controls">
   <button className={`control-btn mic-btn ${micOn ? "" : "off"}`} onClick={toggleMic}>
@@ -451,7 +458,9 @@ return (
     End Call
   </button>
 
-  
+  <button onClick={toggleWhiteboard}>
+          {showWhiteboard ? "Hide Whiteboard" : "Show Whiteboard"}
+      </button>
 
   <button className="control-btn show-participants" onClick={toggleParticipants}>
   {showParticipants ? "Close Participants" : "Show Participants"}
