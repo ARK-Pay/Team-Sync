@@ -24,6 +24,20 @@
   overflow: hidden;
 }
 
+button {
+  padding: 10px;
+  font-size: 16px;
+  cursor: pointer;
+  border: none;
+  background-color: #007bff;
+  color: white;
+  border-radius: 5px;
+}
+
+button:hover {
+  background-color: #0056b3;
+}
+
 /* Responsive Video Grid */
 .video-grid:not(.screen-active) {
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -137,7 +151,7 @@
 
 .participants-sidebar {
   position: fixed; /* Stays in place */
-  right: 0; /* Stick to the right side */
+  right: -300px; /* Start off-screen instead of right: 0 */
   top: 0;
   width: 300px; /* Adjust width as needed */
   height: 100vh; /* Full height */
@@ -147,6 +161,7 @@
   padding: 20px;
   overflow-y: auto;
   z-index: 9999; /* Ensure it's always on top */
+  transition: right 0.3s ease-in-out; /* Add smooth transition */
 } 
 
 .participants-sidebar.open {
@@ -259,11 +274,30 @@
   }
 
   .participants-sidebar {
-    width: 100%;
-    right: -100%;
+    width: 100%; /* Full width on mobile */
+    right: -100%; /* Start fully off-screen on mobile */
   }
 
   .participants-sidebar.open {
     right: 0;
   }
+}
+
+/* Whiteboard related styles */
+.whiteboard-btn {
+  background-color: #9c27b0;
+}
+
+.whiteboard-btn.active {
+  background-color: #7b1fa2;
+}
+
+.whiteboard-btn:hover {
+  background-color: #8e24aa;
+}
+
+/* Adjust grid when whiteboard is active */
+.video-grid.whiteboard-active {
+  opacity: 0.4;
+  pointer-events: none;
 }
