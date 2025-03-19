@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
+import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import { Navigate } from 'react-router-dom';
 import { useRecoilValue } from 'recoil';
@@ -28,12 +29,12 @@ const ProjectDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Navbar />
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       
-      {/* Main Content */}
-      <div className="lg:ml-56">
+      {/* Main Content - adjusted to be below navbar with proper spacing */}
+      <div className="pt-16 lg:ml-56 min-h-screen">
         {selectedSidebar==="project-view"?<ProjectView />:<Hero sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />}
-        
       </div>
     </div>
   );

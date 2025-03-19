@@ -15,6 +15,7 @@ const AddProjectModal = ({ isOpen, onClose }) => {
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState([]);
   const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [touched, setTouched] = useState({
     projectName: false,
     projectDescription: false,
@@ -22,6 +23,26 @@ const AddProjectModal = ({ isOpen, onClose }) => {
     priority: false,
     tags: false,
   });
+
+  // Reset form when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setProjectName('');
+      setProjectDescription('');
+      setDeadline('');
+      setPriority('medium');
+      setTagInput('');
+      setTags([]);
+      setErrors({});
+      setTouched({
+        projectName: false,
+        projectDescription: false,
+        deadline: false,
+        priority: false,
+        tags: false,
+      });
+    }
+  }, [isOpen]);
 
   // Effect to validate project name when touched
   useEffect(() => {
@@ -96,10 +117,12 @@ const AddProjectModal = ({ isOpen, onClose }) => {
     });
 
     if (Object.keys(validationErrors).length === 0) {
+      setIsSubmitting(true);
       try {
         const projectNameExists = await checkProjectNameExists(projectName);
         if (projectNameExists) {
           toast.error('A project with this name already exists. Please choose a different name.');
+          setIsSubmitting(false);
           return;
         }
         const token = localStorage.getItem('token');
@@ -109,7 +132,8 @@ const AddProjectModal = ({ isOpen, onClose }) => {
           description: projectDescription,
           deadline: formattedDeadline,
           priority,
-          tags
+          tags,
+          createdAt: new Date().toISOString() // Add creation date for sorting
         };
 
         const response = await axios.post('http://localhost:3001/project/create', projectData, {
@@ -121,8 +145,8 @@ const AddProjectModal = ({ isOpen, onClose }) => {
 
         if (response.status === 200) {
           toast.success('Project created successfully!');
-          onClose();
-          window.location.reload();
+          resetForm();
+          onClose(); // Call onClose to trigger dashboard refresh in parent component
         }
       } catch (error) {
         if (error.response) {
@@ -140,8 +164,28 @@ const AddProjectModal = ({ isOpen, onClose }) => {
         } else {
           toast.error('An unexpected error occurred!');
         }
+      } finally {
+        setIsSubmitting(false);
       }
     }
+  };
+
+  // Reset form fields
+  const resetForm = () => {
+    setProjectName('');
+    setProjectDescription('');
+    setDeadline('');
+    setPriority('medium');
+    setTagInput('');
+    setTags([]);
+    setErrors({});
+    setTouched({
+      projectName: false,
+      projectDescription: false,
+      deadline: false,
+      priority: false,
+      tags: false,
+    });
   };
 
   // Formats the deadline date from YYYY-MM-DD to DD/MM/YYYY
@@ -231,6 +275,7 @@ const AddProjectModal = ({ isOpen, onClose }) => {
           <h2 className="text-lg font-semibold mb-2">Add New Project</h2>
 
             <button
+              type="button"
               onClick={onClose}
               className="absolute top-2 right-2 text-gray-500 hover:text-red-700 shadow-2xl text-4xl"
             >
@@ -249,9 +294,11 @@ const AddProjectModal = ({ isOpen, onClose }) => {
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
                   onFocus={() => handleFocus('projectName')}
-                  className={`w-full p-2 border ${touched.projectName && errors.projectName ? 'border-red-500' : 'border-black'} rounded focus:outline-none focus:border-blue-500`}
+                  className={`w-full px-3 py-2 border rounded-md ${
+                    errors.projectName ? 'border-red-500' : 'border-gray-300'
+                  } focus:outline-none focus:ring-2 focus:ring-blue-500`}
                 />
-                {touched.projectName && errors.projectName && (
+                {errors.projectName && (
                   <p className="text-red-500 text-sm mt-1">{errors.projectName}</p>
                 )}
               </div>
@@ -266,10 +313,32 @@ const AddProjectModal = ({ isOpen, onClose }) => {
                   value={projectDescription}
                   onChange={(e) => setProjectDescription(e.target.value)}
                   onFocus={() => handleFocus('projectDescription')}
-                  className={`w-full p-2 border ${touched.projectDescription && errors.projectDescription ? 'border-red-500' : 'border-black'} rounded focus:outline-none focus:border-blue-500`}
-                />
-                {touched.projectDescription && errors.projectDescription && (
+                  className={`w-full px-3 py-2 border rounded-md ${
+                    errors.projectDescription ? 'border-red-500' : 'border-gray-300'
+                  } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  rows="3"
+                ></textarea>
+                {errors.projectDescription && (
                   <p className="text-red-500 text-sm mt-1">{errors.projectDescription}</p>
+                )}
+              </div>
+
+              {/* Deadline */}
+              <div className="mb-4">
+                <label className="block mb-1 text-sm font-medium text-gray-700">
+                  Deadline
+                </label>
+                <input
+                  type="date"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                  onFocus={() => handleFocus('deadline')}
+                  className={`w-full px-3 py-2 border rounded-md ${
+                    errors.deadline ? 'border-red-500' : 'border-gray-300'
+                  } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                />
+                {errors.deadline && (
+                  <p className="text-red-500 text-sm mt-1">{errors.deadline}</p>
                 )}
               </div>
 
@@ -281,7 +350,7 @@ const AddProjectModal = ({ isOpen, onClose }) => {
                 <select
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
-                  className="w-full p-2 border border-black rounded focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -296,59 +365,66 @@ const AddProjectModal = ({ isOpen, onClose }) => {
                 </label>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {tags.map((tag, index) => (
-                    <span
+                    <div
                       key={index}
-                      className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full flex items-center gap-1"
+                      className="bg-blue-100 text-blue-800 px-2 py-1 rounded-md flex items-center gap-1"
                     >
-                      {tag}
+                      <span>{tag}</span>
                       <button
                         type="button"
                         onClick={() => removeTag(tag)}
-                        className="hover:text-red-500"
+                        className="text-blue-800 hover:text-red-500 focus:outline-none"
                       >
-                        <X size={14} />
+                        &times;
                       </button>
-                    </span>
+                    </div>
                   ))}
                 </div>
-                <input
-                  type="text"
-                  placeholder="Type a tag and press Enter"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={handleTagInputKeyDown}
-                  onFocus={() => handleFocus('tags')}
-                  className={`w-full p-2 border ${touched.tags && errors.tags ? 'border-red-500' : 'border-black'} rounded focus:outline-none focus:border-blue-500`}
-                />
-                {touched.tags && errors.tags && (
+                <div className="flex">
+                  <input
+                    type="text"
+                    placeholder="Add a tag (press Enter)"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={handleTagInputKeyDown}
+                    onFocus={() => handleFocus('tags')}
+                    className={`w-full px-3 py-2 border rounded-md ${
+                      errors.tags ? 'border-red-500' : 'border-gray-300'
+                    } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  />
+                </div>
+                {errors.tags && (
                   <p className="text-red-500 text-sm mt-1">{errors.tags}</p>
                 )}
               </div>
 
-              {/* Deadline */}
-              <div className="mb-4">
-                <label className="block mb-1 text-sm font-medium text-gray-700">
-                  Deadline
-                </label>
-                <input
-                  type="date"
-                  value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                  onFocus={() => handleFocus('deadline')}
-                  className={`w-full p-2 border ${touched.deadline && errors.deadline ? 'border-red-500' : 'border-black'} rounded focus:outline-none focus:border-blue-500`}
-                />
-                {touched.deadline && errors.deadline && (
-                  <p className="text-red-500 text-sm mt-1">{errors.deadline}</p>
-                )}
-              </div>
-
               {/* Submit Button */}
-              <button
-                type="submit"
-                className="w-full py-2 px-4 bg-blue-950 text-white rounded-lg hover:bg-blue-900 transition-colors"
-              >
-                Add Project
-              </button>
+              <div className="flex justify-end mt-6">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 mr-2"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className={`px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center ${
+                    isSubmitting ? 'opacity-70 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Creating...
+                    </>
+                  ) : 'Create Project'}
+                </button>
+              </div>
             </form>
           </div>
         </div>

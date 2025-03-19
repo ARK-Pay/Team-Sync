@@ -1,58 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faHome, faFolder, faTasks, faUsers, faClipboard, faBell, faVideo } from '@fortawesome/free-solid-svg-icons';
+import { faFolder, faTasks, faUsers, faBell, faTachometerAlt } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 import { useSetRecoilState } from 'recoil';
 import { sidebarSelection } from '../../../../store/atoms/adminDashboardAtoms';
-import { useDispatch } from "react-redux";
-import { logout } from '../../../../redux/userSlice';
-import LogoutIcon from '@mui/icons-material/Logout';
-import ProfileModal from '../../profile/ProfileModal';
-import ResetPassword from "../../../../components/ResetPassword"
 import axios from 'axios';
-
-const IconItem = ({ icon, label, active = false, unreadCount = 0 }) => {
-  return (
-    <a
-      href="#"
-      className={`sidebar-item ${active ? 'sidebar-item-active' : 'sidebar-item-inactive'}`}
-    >
-      <FontAwesomeIcon 
-        icon={icon} 
-        className={`sidebar-icon ${active ? 'text-blue-600' : 'text-gray-700 group-hover:text-gray-900'}`}
-      />
-      <span className="sidebar-text">{label}</span>
-      {/* Display unread count if available */}
-      {unreadCount > 0 && (
-        <span className="absolute top-0 right-0 inline-flex items-center justify-center w-5 h-5 
-          text-xs font-bold text-white bg-red-500 rounded-full">
-          {unreadCount}
-        </span>
-      )}
-    </a>
-  );
-};
 
 const Sidebar = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
-  const userName = localStorage.getItem('userName');
-  const userEmail = localStorage.getItem('userEmail');
   const setSidebarSelection = useSetRecoilState(sidebarSelection);
-  const [active, setActive] = useState("projects");
-  const dispatch = useDispatch();
-  const [isModalOpen, setModalOpen] = useState(false);
-  const toggleModal = () => setModalOpen(!isModalOpen);
-  const [isResetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [active, setActive] = useState("dashboard");
   const [unreadNotifications, setUnreadNotifications] = useState(0);
 
-  const handleResetPasswordOpen = () => {
-    setModalOpen(false);
-    setResetPasswordOpen(true);
-  };
-
   useEffect(() => {
-    setSidebarSelection("projects");
+    setSidebarSelection("dashboard");
     fetchNotification();
   }, [setSidebarSelection]);
 
@@ -72,92 +34,131 @@ const Sidebar = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('userName');
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('authToken');
-    dispatch(logout());
-    navigate('/');
-  };
-
-  const truncateText = (text, maxLength) => {
-    return text.length > maxLength ? text.slice(0, maxLength - 3) + '...' : text;
-  };
-
   return (
     <>
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/30 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 bg-black/30 backdrop-blur-sm lg:hidden z-40"
           onClick={onClose}
         />
       )}
       
       <aside className={`
-        fixed top-0 left-0 h-full bg-white w-64 shadow-lg transform transition-transform duration-300 ease-in-out z-10
+        fixed top-16 left-0 h-[calc(100vh-4rem)] bg-white w-64 transform transition-transform duration-300 ease-in-out z-30
         ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:w-56`}>
         <div className="h-full flex flex-col">
-          <div className="p-4 flex items-center justify-center relative">
-            <div className="text-2xl font-bold">Team Sync</div>
-            <button 
-              onClick={onClose} 
-              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors absolute right-4"
-            >
-              <X className="h-5 w-5" />
-            </button>
+          <div className="p-5 border-b border-gray-200">
+            <h2 className="text-xl font-semibold text-gray-800">Main Menu</h2>
           </div>
 
-          <div className="h-0.5 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 mx-6"></div>
-
-          <nav className="flex-1 px-3 py-4 overflow-y-auto">
-            <ul className="space-y-1 font-medium">
-              <li onClick={() => navigate('/')}>
-                <IconItem icon={faHome} label="Home" />
+          <nav className="flex-1 px-4 py-5 overflow-y-auto">
+            <ul className="space-y-3">
+              <li>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2.5 text-gray-700 rounded-md ${active === "dashboard" ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                  onClick={() => { setSidebarSelection("dashboard"); setActive("dashboard"); }}
+                >
+                  <FontAwesomeIcon 
+                    icon={faTachometerAlt} 
+                    className={`w-5 h-5 mr-3 ${active === "dashboard" ? 'text-blue-600' : 'text-gray-500'}`} 
+                  />
+                  <span className="font-medium">Dashboard</span>
+                </a>
               </li>
-              <li onClick={() => { setSidebarSelection("your-projects"); setActive("your-projects"); }}>
-                <IconItem icon={faFolder} label="Your Projects" active={active === "your-projects"} />
+              
+              <li>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2.5 text-gray-700 rounded-md ${active === "your-projects" ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                  onClick={() => { setSidebarSelection("your-projects"); setActive("your-projects"); }}
+                >
+                  <FontAwesomeIcon 
+                    icon={faFolder} 
+                    className={`w-5 h-5 mr-3 ${active === "your-projects" ? 'text-blue-600' : 'text-gray-500'}`} 
+                  />
+                  <span className="font-medium">Your Projects</span>
+                </a>
               </li>
-              <li onClick={() => { setSidebarSelection("projects"); setActive("projects"); }}>
-                <IconItem icon={faFolder} label="Assigned Projects" active={active === "projects"} />
+              
+              <li>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2.5 text-gray-700 rounded-md ${active === "projects" ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                  onClick={() => { setSidebarSelection("projects"); setActive("projects"); }}
+                >
+                  <FontAwesomeIcon 
+                    icon={faFolder} 
+                    className={`w-5 h-5 mr-3 ${active === "projects" ? 'text-blue-600' : 'text-gray-500'}`} 
+                  />
+                  <span className="font-medium">Assigned Projects</span>
+                </a>
               </li>
-              <li onClick={() => { setActive("tasks"); setSidebarSelection("tasks"); }}>
-                <IconItem icon={faTasks} label="Assigned Tasks" active={active === "tasks"} />
+              
+              <li>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2.5 text-gray-700 rounded-md ${active === "tasks" ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                  onClick={() => { setSidebarSelection("tasks"); setActive("tasks"); }}
+                >
+                  <FontAwesomeIcon 
+                    icon={faTasks} 
+                    className={`w-5 h-5 mr-3 ${active === "tasks" ? 'text-blue-600' : 'text-gray-500'}`} 
+                  />
+                  <span className="font-medium">Assigned Tasks</span>
+                </a>
               </li>
-              <li onClick={() => { setActive("created-tasks"); setSidebarSelection("created-tasks"); }}>
-                <IconItem icon={faTasks} label="Created Tasks" active={active === "created-tasks"} />
+              
+              <li>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2.5 text-gray-700 rounded-md ${active === "created-tasks" ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                  onClick={() => { setSidebarSelection("created-tasks"); setActive("created-tasks"); }}
+                >
+                  <FontAwesomeIcon 
+                    icon={faTasks} 
+                    className={`w-5 h-5 mr-3 ${active === "created-tasks" ? 'text-blue-600' : 'text-gray-500'}`} 
+                  />
+                  <span className="font-medium">Created Tasks</span>
+                </a>
               </li>
-              <li onClick={() => { setActive("notifications"); setSidebarSelection("notifications"); }}>
-                <IconItem icon={faBell} label="Notifications" active={active === "notifications"} unreadCount={unreadNotifications} />
+              
+              <li>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2.5 text-gray-700 rounded-md ${active === "notifications" ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                  onClick={() => { setSidebarSelection("notifications"); setActive("notifications"); }}
+                >
+                  <FontAwesomeIcon 
+                    icon={faBell} 
+                    className={`w-5 h-5 mr-3 ${active === "notifications" ? 'text-blue-600' : 'text-gray-500'}`} 
+                  />
+                  <span className="font-medium">Notifications</span>
+                  {unreadNotifications > 0 && (
+                    <span className="ml-auto inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full">
+                      {unreadNotifications}
+                    </span>
+                  )}
+                </a>
               </li>
-              <li onClick={() => { setActive("users"); setSidebarSelection("users"); }}>
-                <IconItem icon={faUsers} label="Users" active={active === "users"} />
+              
+              <li>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2.5 text-gray-700 rounded-md ${active === "users" ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                  onClick={() => { setSidebarSelection("users"); setActive("users"); }}
+                >
+                  <FontAwesomeIcon 
+                    icon={faUsers} 
+                    className={`w-5 h-5 mr-3 ${active === "users" ? 'text-blue-600' : 'text-gray-500'}`} 
+                  />
+                  <span className="font-medium">Users</span>
+                </a>
               </li>
-
-             
-
             </ul>
           </nav>
-
-          <div className="p-4 mt-auto">
-            <div className="flex-1 h-0.5 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 mb-4"></div>
-            <div className="flex items-center gap-3 cursor-pointer" onClick={toggleModal}>
-              <img className="w-10 h-10 rounded-full" src="https://flowbite.com/docs/images/people/profile-picture-5.jpg" alt="User Profile" />
-              <div>
-                <p className="font-semibold text-gray-800">{truncateText(userName || 'Guest', 16)}</p>
-                <p className="text-sm text-gray-500">{truncateText(userEmail || 'No email', 16)}</p>
-              </div>
-            </div>
-
-            <button onClick={handleLogout} className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2 text-white bg-red-400 hover:bg-red-500 rounded-lg transition-colors">
-              Logout <LogoutIcon />
-            </button>
-          </div>
         </div>
       </aside>
-
-      {isModalOpen && <ProfileModal isOpen={isModalOpen} onClose={toggleModal} onResetPassword={handleResetPasswordOpen} />}
-      {isResetPasswordOpen && <ResetPassword setResetPasswordOpen={setResetPasswordOpen} />}
     </>
   );
 };

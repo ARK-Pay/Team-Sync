@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Sync Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div class="container-fluid">
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#">
+          <i class="fas fa-calendar-alt"></i> Team Sync
+        </a>
+        <div class="collapse navbar-collapse">
+          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                Project 0
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#">Access Manager</a>
+            </li>
+          </ul>
+          <ul class="navbar-nav">
+            <li class="nav-item">
+              <a class="nav-link" href="#">Get Help</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <div class="row mt-4">
+      <div class="col-md-3">
+        <!-- Sidebar -->
+        <div class="sidebar">
+          <div class="nav-item active">
+            <a href="#" class="nav-link">
+              <i class="fas fa-chart-line"></i> Overview
+            </a>
+          </div>
+          <div class="nav-category">DATABASE</div>
+          <div class="nav-item">
+            <a href="#" class="nav-link">
+              <i class="fas fa-database"></i> Clusters
+            </a>
+          </div>
+          <div class="nav-category">SERVICES</div>
+          <div class="nav-item">
+            <a href="#" class="nav-link">
+              <i class="fas fa-search"></i> Search
+            </a>
+          </div>
+          <div class="nav-item">
+            <a href="#" class="nav-link">
+              <i class="fas fa-calendar"></i> Events
+            </a>
+          </div>
+          <div class="nav-category">SECURITY</div>
+          <div class="nav-item">
+            <a href="#" class="nav-link">
+              <i class="fas fa-lock"></i> Database Access
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-9">
+        <!-- Main content -->
+        <div class="content-header">
+          <h1>Overview</h1>
+        </div>
+        
+        <!-- Database stats card -->
+        <div class="card mb-4">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5>Clusters</h5>
+            <button class="btn btn-primary btn-sm">Create Cluster</button>
+          </div>
+          <div class="card-body">
+            <div class="cluster-info">
+              <div class="scheduler-tab">MongoDB Local</div>
+              <div class="connection-buttons mt-3">
+                <button class="btn btn-outline-primary btn-sm">Connect</button>
+                <button class="btn btn-outline-secondary btn-sm">Edit Configuration</button>
+              </div>
+              <div class="mt-3">
+                <div class="data-size" id="data-size">Data Size: Loading...</div>
+              </div>
+              <div class="row mt-4">
+                <div class="col-md-6">
+                  <div class="action-card">
+                    <i class="fas fa-table"></i>
+                    <span>Browse collections</span>
+                    <i class="fas fa-arrow-right"></i>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="action-card">
+                    <i class="fas fa-chart-line"></i>
+                    <span>View monitoring</span>
+                    <i class="fas fa-arrow-right"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Application Development card -->
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5>Application Development</h5>
+            <button class="btn btn-primary btn-sm">Connect new</button>
+          </div>
+          <div class="card-body">
+            <div class="version-info">FullCalendar + MongoDB</div>
+            
+            <div class="events-container mt-4">
+              <h6>Recent Events</h6>
+              <div id="recent-events">Loading events...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html> 
