@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import Hero from './components/Hero';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useRecoilValue } from 'recoil';
 import { authenticationState } from '../../../store/atoms/authVerifierSelector';
 import { sidebarSelection } from '../../../store/atoms/adminDashboardAtoms';
 import ChatModal from './components/ChatModal';
 import ReportModal from './components/ReportModal';
+import CodeIcon from '@mui/icons-material/Code';
 
 // New Video Call Button Component
 const VideoCallButton = () => {
@@ -15,6 +16,21 @@ const VideoCallButton = () => {
       className="bg-blue-950 text-white px-4 py-2 rounded-lg shadow-md hover:bg-blue-700 transition"
     >
       📹 Video Call
+    </button>
+  );
+};
+
+// New Code Editor Button Component
+const CodeEditorButton = () => {
+  const navigate = useNavigate();
+  
+  return (
+    <button 
+      onClick={() => navigate("/code-editor")}
+      className="bg-blue-950 text-white px-4 py-2 rounded-lg shadow-md hover:bg-blue-700 transition flex items-center gap-2"
+    >
+      <CodeIcon />
+      Code Editor
     </button>
   );
 };
@@ -39,9 +55,10 @@ const ProjectView = () => {
     <>
       <Hero />
 
-      {/* Buttons Section (Video Call, Chat, Report) */}
+      {/* Buttons Section (Video Call, Code Editor, Chat, Report) */}
       <div className="absolute top-10 right-40 z-10 flex gap-4">
-        <VideoCallButton />  {/* New Video Call Button */}
+        <VideoCallButton />
+        <CodeEditorButton />
         <ChatModal /> 
         <ReportModal />
       </div>

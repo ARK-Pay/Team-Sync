@@ -17,6 +17,7 @@ import { RecoilRoot } from "recoil";
 
 import VideoCallJoin from "./components/VideoCallJoin"; // New Component for joining a call
 import VideoConference from './components/VideoConference'; // Import from the components folder
+import CodeEditor from './components/CodeEditor/CodeEditor'; // Fixed import path
 
 
 // Main application component
@@ -53,7 +54,7 @@ function App() {
                 <Route exact path="/dashboard/admin" element={<AdminDashboard />} />
                 <Route exact path="/video-call" element={<VideoCallJoin />} />
                 <Route exact path="/video-call/:roomId" element={<VideoConference />} />
-              
+                <Route exact path="/code-editor" element={<CodeEditor />} />
                
               </Routes>
 
