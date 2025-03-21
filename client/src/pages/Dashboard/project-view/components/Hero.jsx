@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Menu } from 'lucide-react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus } from '@fortawesome/free-solid-svg-icons';
+import { Menu, Plus, Loader2, AlertCircle } from 'lucide-react';
 import { useRecoilValue } from 'recoil';
 import { sidebarSelection } from '../../../../store/atoms/adminDashboardAtoms';
 import AddTaskModal from '../task/AddTaskModal';
@@ -21,6 +19,61 @@ const Hero = ({ sidebarOpen, setSidebarOpen }) => {
   const [projectPriority, setProjectPriority] = useState('');
   const [projectTags, setProjectTags] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  // Get current theme from localStorage
+  const currentTheme = localStorage.getItem('dashboard_theme') || 'blue';
+  
+  // Define theme colors
+  const themes = {
+    blue: {
+      primary: 'bg-blue-600',
+      hover: 'hover:bg-blue-700',
+      text: 'text-blue-600',
+      border: 'border-blue-200',
+      accent: 'text-blue-600',
+      light: 'bg-blue-50',
+      lightText: 'text-blue-800'
+    },
+    green: {
+      primary: 'bg-emerald-600',
+      hover: 'hover:bg-emerald-700',
+      text: 'text-emerald-600',
+      border: 'border-emerald-200',
+      accent: 'text-emerald-600',
+      light: 'bg-emerald-50',
+      lightText: 'text-emerald-800'
+    },
+    purple: {
+      primary: 'bg-purple-600',
+      hover: 'hover:bg-purple-700',
+      text: 'text-purple-600',
+      border: 'border-purple-200',
+      accent: 'text-purple-600',
+      light: 'bg-purple-50',
+      lightText: 'text-purple-800'
+    },
+    amber: {
+      primary: 'bg-amber-600',
+      hover: 'hover:bg-amber-700',
+      text: 'text-amber-600',
+      border: 'border-amber-200',
+      accent: 'text-amber-600',
+      light: 'bg-amber-50',
+      lightText: 'text-amber-800'
+    },
+  };
+  
+  const theme = themes[currentTheme];
+
+  const openModal = () => {
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setRefreshTrigger(prev => prev + 1);
+  };
 
   useEffect(() => {
     const fetchProjectDetails = async () => {
@@ -29,6 +82,7 @@ const Hero = ({ sidebarOpen, setSidebarOpen }) => {
 
       if (!projectId || !token) {
         console.error('Missing project ID or token');
+        setError('Missing project ID or authentication token');
         setIsLoading(false);
         return;
       }
@@ -46,36 +100,18 @@ const Hero = ({ sidebarOpen, setSidebarOpen }) => {
         setProjectName(project.name);
         setProjectDescription(project.description);
         setProjectPriority(project.priority);
+        setProjectTags(project.tags || []);
 
         // Update localStorage
         localStorage.setItem('project_name', project.name);
         localStorage.setItem('project_description', project.description);
         localStorage.setItem('project_priority', project.priority);
+        localStorage.setItem('project_tags', project.tags);
         
-        // Optional: store additional project details
-        localStorage.setItem('project_status', project.status);
-        localStorage.setItem('project_deadline', project.deadline);
-        localStorage.setItem('project_users', project.noUsers);
-
-        // Empty tags array for this example - modify as per your backend
-        setProjectTags([]);
-
+        setIsLoading(false);
       } catch (error) {
         console.error('Error fetching project details:', error);
-        if (error.response) {
-          switch (error.response.status) {
-            case 400:
-              alert('Authentication error. Please log in again.');
-              break;
-            case 401:
-              alert('Project not found.');
-              break;
-            case 500:
-              alert('Internal server error. Please try again later.');
-              break;
-          }
-        }
-      } finally {
+        setError(error.response?.data?.message || 'Failed to load project details');
         setIsLoading(false);
       }
     };
@@ -83,91 +119,93 @@ const Hero = ({ sidebarOpen, setSidebarOpen }) => {
     fetchProjectDetails();
   }, []);
 
-  const openModal = () => setIsModalOpen(true);
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setRefreshTrigger(prev => prev + 1);
-  };
-
-  const getPriorityColor = () => {
-    switch (projectPriority.toLowerCase()) {
-      case 'low':
-        return 'bg-green-300 text-green-800';
-      case 'medium':
-        return 'bg-yellow-300 text-yellow-800';
-      case 'high':
-        return 'bg-red-300 text-red-800';
-      default:
-        return 'bg-gray-300 text-gray-800';
-    }
-  };
-
+  // Loading state
   if (isLoading) {
-    return <div>Loading project details...</div>;
+    return (
+      <div className="flex justify-center items-center py-12">
+        <div className="text-center">
+          <Loader2 className={`${theme.text} animate-spin h-10 w-10 mx-auto mb-4`} />
+          <p className="text-gray-600">Loading project details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex justify-center items-center py-12">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-lg">
+          <div className="flex items-start">
+            <AlertCircle className="text-red-500 h-6 w-6 mt-0.5 mr-3" />
+            <div>
+              <h3 className="text-red-800 font-medium text-lg">Error loading project</h3>
+              <p className="text-red-700 mt-1">{error}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="p-4">
-      <div className="relative flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6">
-        <div className="flex items-start gap-4 max-w-[800px]">
-          {/* Sidebar toggle button for mobile */}
-          <button
-            className="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors mt-1"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <Menu className="h-6 w-6" />
-          </button>
-          
-          <div className="space-y-3 flex-1 min-w-0">
-            {/* Project Name and Priority in one line */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-semibold">{projectName}</h1>
-              <span className={`px-3 py-1 ${getPriorityColor()} rounded-full text-sm font-medium whitespace-nowrap`}>
-                {projectPriority}
-              </span>
-            </div>
-            
-            {/* Project Description with word wrapping */}
-            {projectDescription && (
-              <p className="text-gray-600 break-words whitespace-pre-wrap">
-                {projectDescription}
-              </p>
-            )}
-            
-            {/* Display project tags if available */}
-            {projectTags.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {projectTags.map((tag, index) => (
-                  <span
-                    key={index}
-                    className="px-3 py-1 bg-violet-100 text-violet-800 rounded-lg text-sm font-medium whitespace-nowrap"
-                  >
-                    {tag.trim()}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Add Task button aligned to top right */}
+    <div className="space-y-8">
+      {/* Add Task Button - Now positioned as a floating action button */}
+      <div className="flex justify-end mb-4">
         <button
-          className="absolute right-0 top-0 flex items-center gap-2 px-4 py-2 bg-blue-950 text-white rounded-lg hover:bg-blue-900 transition-colors whitespace-nowrap self-start mt-6 lg:static "
+          className={`${theme.primary} text-white flex items-center gap-2 px-4 py-2 rounded-lg ${theme.hover} transition-colors shadow-md`}
           onClick={openModal}
         >
-          <FontAwesomeIcon icon={faPlus} />
-          <span className="inline-flex">Add Task</span>
+          <Plus size={18} />
+          <span>Add Task</span>
         </button>
       </div>
 
-      <TaskTable refreshTrigger={refreshTrigger} />
-      <CompletedTaskTable />
-      <UserTable />
+      {/* Task Tables */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-800">Active Tasks</h2>
+          <p className="text-gray-500 text-sm mt-1">Manage and track your current project tasks</p>
+        </div>
+        <div className="p-6">
+          <TaskTable refreshTrigger={refreshTrigger} />
+        </div>
+      </div>
       
-      <div className="my-6" />
+      {/* Completed Tasks */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-800">Completed Tasks</h2>
+          <p className="text-gray-500 text-sm mt-1">Review tasks that have been completed</p>
+        </div>
+        <div className="p-6">
+          <CompletedTaskTable />
+        </div>
+      </div>
       
-      <FileTable />
+      {/* Project Team */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-800">Project Team</h2>
+          <p className="text-gray-500 text-sm mt-1">Members assigned to this project</p>
+        </div>
+        <div className="p-6">
+          <UserTable />
+        </div>
+      </div>
+      
+      {/* Project Files */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-800">Project Files</h2>
+          <p className="text-gray-500 text-sm mt-1">Access and manage all project-related files</p>
+        </div>
+        <div className="p-6">
+          <FileTable />
+        </div>
+      </div>
 
+      {/* Task Modal */}
       <AddTaskModal isOpen={isModalOpen} onClose={closeModal} />
     </div>
   );

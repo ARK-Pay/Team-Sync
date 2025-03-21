@@ -38,6 +38,36 @@
   }
 }
 
+/* Project Card Animation */
+@keyframes cardFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-cardFadeIn {
+  animation: cardFadeIn 0.5s ease-out forwards;
+}
+
+/* Page Fade In Animation */
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-in-out forwards;
+}
+
 /* Task Suggestion Bubble Animations */
 .task-suggestions-container {
   pointer-events: auto;

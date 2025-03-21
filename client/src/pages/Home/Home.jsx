@@ -127,12 +127,17 @@ const Content = styled.div`
   margin-top: "25px"
 `;
 
+
+
+
 const Home = () => {
   const [SignInOpen, setSignInOpen] = useState(false);
   const [SignUpOpen, setSignUpOpen] = useState(false);
   const [showScroll, setShowScroll] = useState(false);
   const [isLightMode, setIsLightMode] = useState(false);
   const [rotateDirection, setRotateDirection] = useState("rotate-left");
+  const [chatbotOpen, setChatbotOpen] = useState(false);
+
 
   useEffect(() => {
     const checkScrollTop = () => {
@@ -177,6 +182,78 @@ const Home = () => {
     );
   };
 
+  const ChatbotButton = styled.button`
+  position: fixed;
+  bottom: 150px;
+  right: 20px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: none;
+  background-color: #4caf50;
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+
+  &:hover {
+    transform: scale(1.1);
+  }
+`;
+
+const ChatbotContainer = styled.div`
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  width: 350px;
+  height: 500px;
+  background: white;
+  box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  display: ${({ isOpen }) => (isOpen ? "block" : "none")};
+  z-index: 1000;
+`;
+
+const ChatbotHeader = styled.div`
+  background: #4caf50;
+  color: white;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+`;
+
+const CloseButton = styled.button`
+  background: none;
+  border: none;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+`;
+
+  useEffect(() => {
+    const checkScrollTop = () => {
+      setShowScroll(window.scrollY > 400);
+    };
+    window.addEventListener("scroll", checkScrollTop);
+    return () => window.removeEventListener("scroll", checkScrollTop);
+  }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      const decoded = jwtDecode(token);
+      if (decoded.exp < Date.now() / 1000) {
+        localStorage.clear();
+        window.location.href = "/";
+      }
+    }
+  }, []);
+
   return (
     <>
       <Navbar setSignInOpen={setSignInOpen} />
@@ -193,6 +270,21 @@ const Home = () => {
             <Testimonials />
             <Faq />
             <About />
+            <ChatbotButton onClick={() => setChatbotOpen(true)}>
+        🤖
+      </ChatbotButton>
+      <ChatbotContainer isOpen={chatbotOpen}>
+        <ChatbotHeader>
+          <span>Chatbot</span>
+          <CloseButton onClick={() => setChatbotOpen(false)}>✖</CloseButton>
+        </ChatbotHeader>
+        <iframe
+          src="https://cdn.botpress.cloud/webchat/v2.2/shareable.html?configUrl=https://files.bpcontent.cloud/2025/03/18/06/20250318060835-8X4SG1VG.json"
+          width="100%"
+          height="450px"
+          style={{ border: "none" }}
+        ></iframe>
+      </ChatbotContainer>
             <Footer />
           </Content>
           <ThemeToggle onClick={toggleTheme}>

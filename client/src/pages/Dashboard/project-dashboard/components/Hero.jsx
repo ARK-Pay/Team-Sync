@@ -36,7 +36,7 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
             <span className="font-medium">Suggested Task</span>
           </div>
           <button 
-            onClick={onDismiss}
+            onClick={() => onDismiss(suggestion.id)}
             className="text-gray-400 hover:text-gray-600"
           >
             <X className="h-4 w-4" />
@@ -45,7 +45,7 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
         <p className="mt-2 text-sm text-gray-600">{suggestion.title}</p>
         <div className="mt-3 flex justify-end space-x-2">
           <button 
-            onClick={onDismiss}
+            onClick={() => onDismiss(suggestion.id)}
             className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
           >
             Dismiss
@@ -215,9 +215,14 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
     // Check if we have tasks in localStorage or from the API response
     const allTasks = apiResponses?.allTasks || [];
     
+    // Get dismissed suggestions from localStorage
+    const dismissedSuggestions = JSON.parse(localStorage.getItem('dismissed_suggestions') || '[]');
+    
+    let suggestions = [];
+    
     if (allTasks.length === 0) {
       // No tasks yet, provide starter suggestions
-      return [
+      suggestions = [
         { 
           id: 'sugg-1', 
           title: 'Create your first task for your project',
@@ -231,62 +236,63 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
           project_name: dashboardStats.recentProjects[0]?.name || 'Your Project',
         }
       ];
-    }
-    
-    // Analyze existing tasks to generate smart suggestions
-    const completedTasks = allTasks.filter(task => 
-      task.status === '2' || task.status === 'completed' || task.status === 'Completed'
-    );
-    
-    const inProgressTasks = allTasks.filter(task => 
-      task.status === '1' || task.status === 'in progress' || task.status === 'In Progress'
-    );
-    
-    const suggestions = [];
-    
-    // If there are tasks in progress, suggest follow-up tasks
-    if (inProgressTasks.length > 0) {
-      const randomTask = inProgressTasks[Math.floor(Math.random() * inProgressTasks.length)];
-      suggestions.push({
-        id: `sugg-followup-${randomTask.id}`,
-        title: `Follow up on: ${randomTask.title}`,
-        project_id: randomTask.project_id,
-        project_name: randomTask.project_name,
-        related_task: randomTask.id
+    } else {
+      // Analyze existing tasks to generate smart suggestions
+      const completedTasks = allTasks.filter(task => 
+        task.status === '2' || task.status === 'completed' || task.status === 'Completed'
+      );
+      
+      const inProgressTasks = allTasks.filter(task => 
+        task.status === '1' || task.status === 'in progress' || task.status === 'In Progress'
+      );
+      
+      // If there are tasks in progress, suggest follow-up tasks
+      if (inProgressTasks.length > 0) {
+        const randomTask = inProgressTasks[Math.floor(Math.random() * inProgressTasks.length)];
+        suggestions.push({
+          id: `sugg-followup-${randomTask.id}`,
+          title: `Follow up on: ${randomTask.title}`,
+          project_id: randomTask.project_id,
+          project_name: randomTask.project_name,
+          related_task: randomTask.id
+        });
+      }
+      
+      // If there are completed tasks, suggest review tasks
+      if (completedTasks.length > 0) {
+        const randomTask = completedTasks[Math.floor(Math.random() * completedTasks.length)];
+        suggestions.push({
+          id: `sugg-review-${randomTask.id}`,
+          title: `Review the completed task: ${randomTask.title}`,
+          project_id: randomTask.project_id,
+          project_name: randomTask.project_name,
+          related_task: randomTask.id
+        });
+      }
+      
+      // Suggest tasks for project that has few tasks
+      const projectTaskCounts = {};
+      allTasks.forEach(task => {
+        projectTaskCounts[task.project_id] = (projectTaskCounts[task.project_id] || 0) + 1;
       });
+      
+      const projectsWithFewTasks = dashboardStats.recentProjects.filter(project => 
+        (projectTaskCounts[project.id] || 0) < 3
+      );
+      
+      if (projectsWithFewTasks.length > 0) {
+        const project = projectsWithFewTasks[Math.floor(Math.random() * projectsWithFewTasks.length)];
+        suggestions.push({
+          id: `sugg-project-${project.id}`,
+          title: `Add more tasks to project: ${project.name}`,
+          project_id: project.id,
+          project_name: project.name
+        });
+      }
     }
     
-    // If there are completed tasks, suggest review tasks
-    if (completedTasks.length > 0) {
-      const randomTask = completedTasks[Math.floor(Math.random() * completedTasks.length)];
-      suggestions.push({
-        id: `sugg-review-${randomTask.id}`,
-        title: `Review the completed task: ${randomTask.title}`,
-        project_id: randomTask.project_id,
-        project_name: randomTask.project_name,
-        related_task: randomTask.id
-      });
-    }
-    
-    // Suggest tasks for project that has few tasks
-    const projectTaskCounts = {};
-    allTasks.forEach(task => {
-      projectTaskCounts[task.project_id] = (projectTaskCounts[task.project_id] || 0) + 1;
-    });
-    
-    const projectsWithFewTasks = dashboardStats.recentProjects.filter(project => 
-      (projectTaskCounts[project.id] || 0) < 3
-    );
-    
-    if (projectsWithFewTasks.length > 0) {
-      const project = projectsWithFewTasks[Math.floor(Math.random() * projectsWithFewTasks.length)];
-      suggestions.push({
-        id: `sugg-project-${project.id}`,
-        title: `Add more tasks to project: ${project.name}`,
-        project_id: project.id,
-        project_name: project.name
-      });
-    }
+    // Filter out any suggestions that have been dismissed previously
+    suggestions = suggestions.filter(sugg => !dismissedSuggestions.includes(sugg.id));
     
     // Return a maximum of 3 suggestions
     return suggestions.slice(0, 3);
@@ -319,7 +325,13 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
   
   // Handle dismissing a task suggestion
   const handleDismissSuggestion = (suggestionId) => {
+    // Remove the suggestion from the current state
     setTaskSuggestions(prev => prev.filter(sugg => sugg.id !== suggestionId));
+    
+    // Store dismissed suggestion IDs in localStorage to prevent them from reappearing
+    const dismissedSuggestions = JSON.parse(localStorage.getItem('dismissed_suggestions') || '[]');
+    dismissedSuggestions.push(suggestionId);
+    localStorage.setItem('dismissed_suggestions', JSON.stringify(dismissedSuggestions));
   };
 
   // Create a reusable function to fetch dashboard stats
