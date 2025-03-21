@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from "react-redux";
 import { logout } from '../../../../redux/userSlice';
@@ -14,15 +14,40 @@ const Navbar = () => {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [isModalOpen, setModalOpen] = useState(false);
   const [isResetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [profileImage, setProfileImage] = useState(
+    localStorage.getItem('userProfileImage') || "https://flowbite.com/docs/images/people/profile-picture-5.jpg"
+  );
   
   const userName = localStorage.getItem('userName') || 'Guest';
   const userEmail = localStorage.getItem('userEmail') || 'No email';
+  
+  // Update profile image when localStorage changes
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const updatedImage = localStorage.getItem('userProfileImage');
+      if (updatedImage) {
+        setProfileImage(updatedImage);
+      }
+    };
+
+    // Check for profile image changes when modal closes
+    if (!isModalOpen) {
+      handleStorageChange();
+    }
+
+    // Listen for storage events (changes in localStorage)
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [isModalOpen]);
   
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('userName');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('authToken');
+    localStorage.removeItem('userProfileImage');
     dispatch(logout());
     navigate('/');
   };
@@ -30,6 +55,15 @@ const Navbar = () => {
   const handleOpenProfile = () => {
     setProfileDropdownOpen(false);
     setModalOpen(true);
+  };
+  
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    // Update profile image when modal closes
+    const updatedImage = localStorage.getItem('userProfileImage');
+    if (updatedImage) {
+      setProfileImage(updatedImage);
+    }
   };
   
   const handleResetPasswordOpen = () => {
@@ -66,8 +100,7 @@ const Navbar = () => {
             >
               <img 
                 className="w-8 h-8 rounded-full object-cover border-2 border-gray-200" 
-                style={{ borderRadius: '40% / 50%' }}
-                src="https://flowbite.com/docs/images/people/profile-picture-5.jpg" 
+                src={profileImage} 
                 alt="User Profile" 
               />
               <div className="hidden md:block text-left">
@@ -79,9 +112,16 @@ const Navbar = () => {
             
             {profileDropdownOpen && (
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg overflow-hidden z-50 border border-gray-200">
-                <div className="px-4 py-3 border-b border-gray-100">
-                  <p className="text-sm font-medium text-gray-900">{userName}</p>
-                  <p className="text-xs text-gray-500 truncate">{userEmail}</p>
+                <div className="py-3 px-4 border-b border-gray-100 flex items-center">
+                  <img 
+                    src={profileImage} 
+                    alt="Profile"
+                    className="w-10 h-10 rounded-full object-cover mr-3 border border-gray-200"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{userName}</p>
+                    <p className="text-xs text-gray-500 truncate">{userEmail}</p>
+                  </div>
                 </div>
                 <ul>
                   <li>
@@ -118,7 +158,7 @@ const Navbar = () => {
         </div>
       </div>
       
-      {isModalOpen && <ProfileModal isOpen={isModalOpen} onClose={() => setModalOpen(false)} onResetPassword={handleResetPasswordOpen} />}
+      {isModalOpen && <ProfileModal isOpen={isModalOpen} onClose={handleCloseModal} onResetPassword={handleResetPasswordOpen} />}
       {isResetPasswordOpen && <ResetPassword setResetPasswordOpen={setResetPasswordOpen} />}
     </nav>
   );

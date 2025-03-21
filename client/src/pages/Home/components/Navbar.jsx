@@ -13,6 +13,9 @@ const Navbar = ({ setSignInOpen }) => {
   const [isVisible, setIsVisible] = useState(true);
   const dispatch = useDispatch();
   const { isLoggedIn } = useSelector((state) => state.user);
+  const [profileImage, setProfileImage] = useState(
+    localStorage.getItem('userProfileImage') || "https://flowbite.com/docs/images/people/profile-picture-5.jpg"
+  );
 
   // Scroll event to fade the navbar
   useEffect(() => {
@@ -27,6 +30,26 @@ const Navbar = ({ setSignInOpen }) => {
     };
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Update profile image when localStorage changes
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const updatedImage = localStorage.getItem('userProfileImage');
+      if (updatedImage) {
+        setProfileImage(updatedImage);
+      }
+    };
+
+    // Listen for storage events
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Initial check
+    handleStorageChange();
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   const handleMenuItemClick = (event) => {
@@ -47,6 +70,15 @@ const Navbar = ({ setSignInOpen }) => {
     setTimeout(() => {
       setIsVisible(false); // hide navbar after scrolling
     }, 1000);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('userName');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userProfileImage');
+    dispatch(logout());
   };
 
   // Only render the Navbar if we're on the homepage
@@ -115,15 +147,15 @@ const Navbar = ({ setSignInOpen }) => {
                 }}
               >
                 <img
-                  src="https://i.pravatar.cc/150"
+                  src={profileImage}
                   alt="User Avatar"
-                  className="  w-10 h-10 rounded-full object-cover border-2 border-[]"
+                  className="w-10 h-10 rounded-full object-cover border-2 border-white"
                 />
                 <span className="truncate">Dashboard</span>
               </button>
 
               <button
-                onClick={() => dispatch(logout())}
+                onClick={handleLogout}
                 className="py-2 px-6 bg-[#001f3d] font-semibold text-lg text-white rounded-full hover:bg-[#6B5BCD] hover:text-white border-2 border-[#0288d1] transition-all duration-300 transform hover:translate-y-[-3px] shadow-lg hover:shadow-2xl"
               >
                 Logout

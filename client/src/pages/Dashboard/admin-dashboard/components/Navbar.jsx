@@ -1,32 +1,37 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 // DropdownButton Component
 // Renders individual dropdown menu items with a label and URL
 // Props:
 // - label: text to display for the menu item
 // - url: link destination for the menu item
-const DropdownButton = ({ label, url }) => {
+// - onClick: optional click handler
+const DropdownButton = ({ label, url, onClick }) => {
   return (
     <li>
-      <a
-        href={url}
-        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+      <button
+        onClick={onClick}
+        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
       >
         {label}
-      </a>
+      </button>
     </li>
   );
 };
 
 // DropdownMenu Component
 // Renders the complete dropdown menu including user info and navigation items
-const DropdownMenu = () => {
+const DropdownMenu = ({ onLogout }) => {
+  const userName = localStorage.getItem('userName') || 'Admin User';
+  const userEmail = localStorage.getItem('userEmail') || 'admin@example.com';
+  const profileImage = localStorage.getItem('userProfileImage') || "https://flowbite.com/docs/images/people/profile-picture-5.jpg";
+
   // Array of menu items with their labels and URLs
   const menuItems = [
     { label: "Dashboard", url: "#" },
     { label: "Settings", url: "#" },
-    { label: "Earnings", url: "#" },
-    { label: "Sign out", url: "#" },
+    { label: "Sign out", url: "#", onClick: onLogout },
   ];
 
   return (
@@ -35,16 +40,26 @@ const DropdownMenu = () => {
       style={{ top: "100%", zIndex: 50 }}
     >
       {/* User Information Section */}
-      <div className="px-4 py-3">
-        <p className="text-sm text-gray-900">Neil Sims</p>
-        <p className="text-sm font-medium text-gray-900 truncate">
-          neil.sims@flowbite.com
-        </p>
+      <div className="px-4 py-3 border-b border-gray-100 flex items-center">
+        <img 
+          src={profileImage} 
+          alt="Profile"
+          className="w-10 h-10 rounded-full object-cover mr-3 border border-gray-200"
+        />
+        <div>
+          <p className="text-sm font-medium text-gray-900">{userName}</p>
+          <p className="text-xs text-gray-500 truncate">{userEmail}</p>
+        </div>
       </div>
       {/* Navigation Menu Items */}
       <ul className="py-1">
         {menuItems.map((item, index) => (
-          <DropdownButton key={index} label={item.label} url={item.url} />
+          <DropdownButton 
+            key={index} 
+            label={item.label} 
+            url={item.url} 
+            onClick={item.onClick}
+          />
         ))}
       </ul>
     </div>
@@ -53,13 +68,47 @@ const DropdownMenu = () => {
 
 // Main Navbar Component
 const Navbar = () => {
+  const navigate = useNavigate();
   // State to manage dropdown visibility
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [profileImage, setProfileImage] = useState(
+    localStorage.getItem('userProfileImage') || "https://flowbite.com/docs/images/people/profile-picture-5.jpg"
+  );
 
   // Toggle function for dropdown menu
   const toggleDropdown = () => {
     setDropdownOpen(!dropdownOpen);
   };
+
+  // Handle logout
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('userName');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userProfileImage');
+    navigate('/');
+  };
+
+  // Update profile image when localStorage changes
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const updatedImage = localStorage.getItem('userProfileImage');
+      if (updatedImage) {
+        setProfileImage(updatedImage);
+      }
+    };
+
+    // Listen for storage events (changes in localStorage)
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Initial check for profile image
+    handleStorageChange();
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   return (
     <nav className="fixed top-0 z-50 w-full bg-white border-b border-gray-200">
@@ -92,16 +141,11 @@ const Navbar = () => {
               </svg>
             </button>
             {/* Logo and Brand Name */}
-            <a href="https://flowbite.com" className="flex ms-2 md:me-24">
-              <img
-                src="https://flowbite.com/docs/images/logo.svg"
-                className="h-8 me-3"
-                alt="FlowBite Logo"
-              />
-              <span className="self-center text-xl font-semibold sm:text-2xl whitespace-nowrap">
-                Flowbite
+            <div className="flex ms-2 md:me-24">
+              <span className="self-center text-xl font-semibold sm:text-2xl whitespace-nowrap text-blue-600">
+                Team Sync
               </span>
-            </a>
+            </div>
           </div>
 
           {/* Right side - User Profile Section */}
@@ -117,15 +161,15 @@ const Navbar = () => {
                 >
                   <span className="sr-only">Open user menu</span>
                   <img
-                    className="w-8 h-8 rounded-full"
-                    src="https://flowbite.com/docs/images/people/profile-picture-5.jpg"
+                    className="w-8 h-8 rounded-full object-cover"
+                    src={profileImage}
                     alt="User profile"
                   />
                 </button>
               </div>
 
               {/* Conditional rendering of dropdown menu */}
-              {dropdownOpen && <DropdownMenu />}
+              {dropdownOpen && <DropdownMenu onLogout={handleLogout} />}
             </div>
           </div>
         </div>
