@@ -17,21 +17,9 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.json());
 
-// AI Summarization Route
-app.post("/api/summarize", async (req, res) => {
-  try {
-    const { text } = req.body;
-    if (!text) return res.status(400).json({ error: "No text provided" });
-
-    // Simulating AI response (replace with actual AI logic)
-    const summary = `Summarized: ${text}`;
-
-    res.json({ summary });
-  } catch (error) {
-    console.error("AI Summarization Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
+// Import and use the summarizer router
+const summarizerRouter = require('./routes/summarizer');
+app.use('/api', summarizerRouter);
 
 // Routes
 app.use("/admin", adminRouter);
