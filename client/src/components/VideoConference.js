@@ -849,50 +849,282 @@ useEffect(() => {
     }
   };
 
-  // Function to extract potential topics from transcript
+  // Function to extract potential topics from transcript with improved detail
   const extractTopics = (transcript) => {
-    // Simple heuristic to find repeated phrases or keywords
-    const words = transcript.toLowerCase().split(/\s+/);
+    console.log("Extracting topics from transcript of length:", transcript.length);
+    
+    // Improved topic extraction with more detailed analysis
+    if (!transcript || transcript.trim().length < 20) {
+      return ["No meaningful conversation detected"];
+    }
+    
+    // Extract sentences to analyze for topics
+    const sentences = transcript.split(/[.!?]+/).filter(s => s.trim().length > 10);
+    
+    // Common words to exclude from topics
+    const stopWords = [
+      "the", "and", "that", "this", "with", "for", "have", "you", "not", "but", 
+      "was", "are", "what", "when", "why", "how", "from", "your", "will", "would",
+      "could", "should", "than", "then", "them", "these", "those", "there", "their",
+      "about", "which", "been", "into", "some", "very", "just", "also", "like",
+      "okay", "yes", "no", "maybe", "sure", "right", "well", "know", "think", "said",
+      "going", "get", "got", "because", "says", "trying", "does", "doing", "done",
+      "being", "need", "needs", "wants", "wanted", "way", "really"
+    ];
+    
+    // Topic indicator phrases that suggest important discussion points
+    const topicIndicators = [
+      "discuss", "talk about", "focus on", "regarding", "concerning",
+      "about the", "topic of", "subject of", "matter of", "issue of", 
+      "idea of", "concept of", "plan for", "strategy for", "approach to",
+      "related to", "in terms of", "with respect to", "agenda", "important"
+    ];
+    
+    // Analyze words frequency first
     const wordFrequency = {};
+    const words = transcript.toLowerCase().split(/\s+/);
     
     words.forEach(word => {
-      if (word.length > 3 && !commonWords.includes(word)) {
-        wordFrequency[word] = (wordFrequency[word] || 0) + 1;
+      const cleanWord = word.replace(/[^\w\s]|_/g, "").trim();
+      if (cleanWord.length > 3 && !stopWords.includes(cleanWord)) {
+        wordFrequency[cleanWord] = (wordFrequency[cleanWord] || 0) + 1;
       }
     });
     
-    // Find potential topics from word frequencies
-    return Object.entries(wordFrequency)
+    // Get frequent keywords
+    const frequentKeywords = Object.entries(wordFrequency)
       .filter(([_, count]) => count > 2)
       .sort(([_, countA], [__, countB]) => countB - countA)
-      .slice(0, 5)
-      .map(([word]) => word.charAt(0).toUpperCase() + word.slice(1));
+      .slice(0, 10)
+      .map(([word]) => word);
+    
+    console.log("Frequent keywords:", frequentKeywords);
+    
+    // Find sentences that might be describing topics
+    const potentialTopicSentences = sentences.filter(sentence => {
+      const lowerSentence = sentence.toLowerCase();
+      // Check if sentence contains any topic indicators
+      return topicIndicators.some(indicator => lowerSentence.includes(indicator)) ||
+             // Or contains multiple frequent keywords
+             frequentKeywords.filter(keyword => lowerSentence.includes(keyword)).length >= 2;
+    });
+    
+    // Extract potential phrases from topic sentences
+    let candidateTopics = [];
+    
+    // First try to extract from sentences with topic indicators
+    potentialTopicSentences.forEach(sentence => {
+      const lowerSentence = sentence.toLowerCase().trim();
+      
+      // Look for phrases following topic indicators
+      for (const indicator of topicIndicators) {
+        if (lowerSentence.includes(indicator)) {
+          const index = lowerSentence.indexOf(indicator) + indicator.length;
+          const remainingText = lowerSentence.slice(index).trim();
+          
+          if (remainingText.length > 3 && remainingText.length < 50) {
+            const topic = remainingText.charAt(0).toUpperCase() + remainingText.slice(1);
+            candidateTopics.push(topic);
+          }
+        }
+      }
+    });
+    
+    // If we couldn't find topics using indicators, extract based on keyword phrases
+    if (candidateTopics.length < 2) {
+      sentences.forEach(sentence => {
+        const lowerSentence = sentence.toLowerCase();
+        
+        // If the sentence contains multiple frequent keywords, consider it a topic
+        const containedKeywords = frequentKeywords.filter(keyword => 
+          lowerSentence.includes(keyword)
+        );
+        
+        if (containedKeywords.length >= 2) {
+          // Extract a reasonable portion of the sentence
+          let topic = sentence.trim();
+          
+          // Limit to a reasonable length (30-80 chars)
+          if (topic.length > 80) {
+            topic = topic.slice(0, 77) + "...";
+          } else if (topic.length < 30 && containedKeywords.length >= 2) {
+            // If it's too short, expand with keywords context
+            const contextWords = containedKeywords.join(" and ") + " discussion";
+            topic = topic + " - " + contextWords;
+          }
+          
+          // Capitalize first letter
+          topic = topic.charAt(0).toUpperCase() + topic.slice(1);
+          candidateTopics.push(topic);
+        }
+      });
+    }
+    
+    // Deduplicate topics and limit to 5
+    const uniqueTopics = [...new Set(candidateTopics)];
+    let finalTopics = uniqueTopics.slice(0, 5);
+    
+    // If we still don't have enough topics, add keyword-based generic topics
+    if (finalTopics.length < 2 && frequentKeywords.length > 0) {
+      for (let i = 0; i < Math.min(3, frequentKeywords.length); i++) {
+        const keyword = frequentKeywords[i];
+        const capitalizedKeyword = keyword.charAt(0).toUpperCase() + keyword.slice(1);
+        const genericTopic = `Discussion about ${capitalizedKeyword}`;
+        
+        if (!finalTopics.includes(genericTopic)) {
+          finalTopics.push(genericTopic);
+        }
+      }
+    }
+    
+    // Return formatted topics or default message
+    return finalTopics.length > 0 ? 
+      finalTopics : 
+      ["The conversation didn't contain clearly identifiable topics"];
   };
 
-  // Common words to exclude from topic extraction
-  const commonWords = [
-    "the", "and", "that", "this", "with", "for", "have", "you", "not", "but", 
-    "was", "are", "what", "when", "why", "how", "from", "your", "will", "would",
-    "could", "should", "than", "then", "them", "these", "those", "there", "their",
-    "about", "which", "been", "into", "some", "very", "just", "also", "like"
-  ];
-
-  // Function to extract potential action items from transcript
+  // Function to extract potential action items from transcript with better accuracy
   const extractActionItems = (transcript) => {
-    // Look for sentences that might contain action items
-    const sentences = transcript.split(/[.!?]+/);
-    const actionItemPatterns = [
-      /need to/i, /should/i, /must/i, /have to/i, /going to/i, /will/i,
-      /let's/i, /let us/i, /plan to/i, /remember to/i, /don't forget/i
+    console.log("Extracting action items from transcript");
+    
+    if (!transcript || transcript.trim().length < 20) {
+      return [];
+    }
+    
+    // Split transcript into sentences
+    const sentences = transcript.split(/[.!?]+/).filter(s => s.trim().length > 15);
+    
+    // Action item indicator patterns
+    const actionIndicators = [
+      { pattern: /need to\s+([\w\s,]+)/i, priority: 5 }, 
+      { pattern: /should\s+([\w\s,]+)/i, priority: 4 },
+      { pattern: /have to\s+([\w\s,]+)/i, priority: 5 },
+      { pattern: /must\s+([\w\s,]+)/i, priority: 5 },
+      { pattern: /going to\s+([\w\s,]+)/i, priority: 3 },
+      { pattern: /will\s+([\w\s,]+)/i, priority: 3 },
+      { pattern: /let'?s\s+([\w\s,]+)/i, priority: 4 },
+      { pattern: /plan to\s+([\w\s,]+)/i, priority: 4 },
+      { pattern: /remember to\s+([\w\s,]+)/i, priority: 5 },
+      { pattern: /don'?t forget to\s+([\w\s,]+)/i, priority: 5 },
+      { pattern: /action item[:;]\s*([\w\s,]+)/i, priority: 10 },
+      { pattern: /task[:;]\s*([\w\s,]+)/i, priority: 10 },
+      { pattern: /assign(?:ed|ing)?\s+(?:to|for)?\s+([\w\s,]+)/i, priority: 8 },
+      { pattern: /take care of\s+([\w\s,]+)/i, priority: 7 },
+      { pattern: /responsible for\s+([\w\s,]+)/i, priority: 8 },
+      { pattern: /follow(?:ing)? up (?:on|with)?\s+([\w\s,]+)/i, priority: 6 },
+      { pattern: /create\s+([\w\s,]+)/i, priority: 3 },
+      { pattern: /implement\s+([\w\s,]+)/i, priority: 4 },
+      { pattern: /set up\s+([\w\s,]+)/i, priority: 4 },
+      { pattern: /review\s+([\w\s,]+)/i, priority: 3 },
+      { pattern: /complete\s+([\w\s,]+)/i, priority: 4 },
+      { pattern: /finish\s+([\w\s,]+)/i, priority: 4 }
     ];
     
-    return sentences
-      .filter(sentence => {
-        return actionItemPatterns.some(pattern => pattern.test(sentence)) && 
-               sentence.length > 20 && sentence.length < 150;
-      })
-      .map(sentence => sentence.trim())
-      .slice(0, 3);
+    // Time expressions to identify deadlines
+    const timeExpressions = [
+      /by (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i,
+      /by (?:tomorrow|next week|next month|tonight|today)/i,
+      /by (?:january|february|march|april|may|june|july|august|september|october|november|december)/i,
+      /by the end of (?:day|week|month|quarter|year)/i,
+      /within \d+ (?:hour|day|week|month|year)s?/i,
+      /before (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i
+    ];
+    
+    // Person indicators to identify who is assigned
+    const personIndicators = [
+      /(?:assign to|assigned to) (\w+)/i,
+      /(\w+) will (?:do|take|handle)/i,
+      /(\w+) should (?:do|take|handle)/i,
+      /(\w+) is responsible/i
+    ];
+    
+    // Extracted candidate action items with metadata
+    const candidates = [];
+    
+    sentences.forEach(sentence => {
+      let matchFound = false;
+      let highestPriority = 0;
+      let bestMatch = null;
+      
+      for (const { pattern, priority } of actionIndicators) {
+        const match = sentence.match(pattern);
+        
+        if (match && match[1] && priority > highestPriority) {
+          matchFound = true;
+          highestPriority = priority;
+          bestMatch = {
+            text: match[1].trim(),
+            priority: priority,
+            sentence: sentence.trim(),
+            hasDeadline: timeExpressions.some(expr => sentence.match(expr)),
+            assignee: extractAssignee(sentence, personIndicators)
+          };
+        }
+      }
+      
+      if (matchFound && bestMatch) {
+        // Format the action item text
+        let actionItemText = bestMatch.text;
+        
+        // If text is too short, use the whole sentence
+        if (actionItemText.length < 15 && bestMatch.sentence.length < 120) {
+          actionItemText = bestMatch.sentence;
+        }
+        
+        // Add assignee information if available
+        if (bestMatch.assignee) {
+          if (!actionItemText.includes(bestMatch.assignee)) {
+            actionItemText = `[${bestMatch.assignee}] ${actionItemText}`;
+          }
+        }
+        
+        // Add deadline information
+        for (const timeExpr of timeExpressions) {
+          const deadlineMatch = sentence.match(timeExpr);
+          if (deadlineMatch && !actionItemText.includes(deadlineMatch[0])) {
+            actionItemText += ` (${deadlineMatch[0]})`;
+            break;
+          }
+        }
+        
+        candidates.push({
+          text: actionItemText,
+          priority: bestMatch.priority,
+          completed: false
+        });
+      }
+    });
+    
+    // Sort by priority and limit to 5 items
+    const sortedItems = candidates
+      .sort((a, b) => b.priority - a.priority)
+      .slice(0, 5);
+    
+    return sortedItems.length > 0 ? sortedItems : [];
+  };
+
+  // Helper function to extract assignee from sentence
+  const extractAssignee = (sentence, personIndicators) => {
+    for (const pattern of personIndicators) {
+      const match = sentence.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    
+    // Try to find common names in the sentence
+    const words = sentence.split(/\s+/);
+    for (const word of words) {
+      // Look for capitalized words that might be names
+      if (word.length > 1 && word[0] === word[0].toUpperCase() && word[1] === word[1].toLowerCase()) {
+        // Exclude sentence beginnings and common words
+        if (words.indexOf(word) > 0 && !["I", "We", "The", "This", "That", "These", "Those"].includes(word)) {
+          return word;
+        }
+      }
+    }
+    
+    return null;
   };
 
   // Toggle AI Summarizer function - starts/stops transcription and generates summary
