@@ -23,9 +23,11 @@ import {
   CheckCircle,
   Clock,
   Copy,
-  FileSpreadsheet
+  FileSpreadsheet,
+  X
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 
 const socket = io("http://127.0.0.1:3001", {
   transports: ["websocket"],
@@ -44,7 +46,6 @@ const VideoConference = ({ roomId }) => {
   const [meetingSummary, setMeetingSummary] = useState("");
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [meetingTranscript, setMeetingTranscript] = useState("");
-  const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -65,9 +66,23 @@ const VideoConference = ({ roomId }) => {
   const [recordingUrl, setRecordingUrl] = useState("");
   const [summarySource, setSummarySource] = useState("ai"); // "ai", "local", "basic"
   const [summaryJustCopied, setSummaryJustCopied] = useState(false);
-  const [showDebugControls, setShowDebugControls] = useState(false);
-
-  // Refs
+  const [translatedSummary, setTranslatedSummary] = useState(null);
+  const [translationLanguage, setTranslationLanguage] = useState("");
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [actionItems, setActionItems] = useState([]);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  const [meetingTimer, setMeetingTimer] = useState(null);
+  
+  // Speech recognition state
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [speechRecognition, setSpeechRecognition] = useState(null);
+  const [transcriptSegments, setTranscriptSegments] = useState([]);
+  const [currentTranscriptText, setCurrentTranscriptText] = useState("");
+  const [transcriptionEnabled, setTranscriptionEnabled] = useState(false);
+  const [recognizedTopics, setRecognizedTopics] = useState([]);
+  
+  // Refs for components
   const myVideo = useRef();
   const screenVideo = useRef();
   const analyser = useRef(null);
@@ -76,14 +91,6 @@ const VideoConference = ({ roomId }) => {
   const meetingTimerRef = useRef(null);
   const remoteVideoRefs = useRef({});
   const combinedStreamRef = useRef(null);
-
-  // Speech recognition state
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [speechRecognition, setSpeechRecognition] = useState(null);
-  const [transcriptSegments, setTranscriptSegments] = useState([]);
-  const [currentTranscriptText, setCurrentTranscriptText] = useState("");
-  const [transcriptionEnabled, setTranscriptionEnabled] = useState(false);
-  const [recognizedTopics, setRecognizedTopics] = useState([]);
   
   // Refs for speech recognition
   const transcriptTimeoutRef = useRef(null);
@@ -609,273 +616,283 @@ useEffect(() => {
     return 'video/webm'; // Fallback
   };
 
-  // Initialize speech recognition when the component mounts
+  // Update the speech recognition initialization
   useEffect(() => {
-    // Check if speech recognition is available in the browser
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    // Set up speech recognition if available
+    if (window.SpeechRecognition || window.webkitSpeechRecognition) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
       
+      const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
+      recognition.maxAlternatives = 3;
       
-      // Handle result event - when speech is recognized
-      recognition.onresult = (event) => {
-        let currentText = '';
-        let isFinal = false;
-        
-        // Process the results
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          currentText += transcript;
-          isFinal = event.results[i].isFinal;
-        }
-        
-        // Update the current transcript text being displayed
-        setCurrentTranscriptText(currentText);
-        
-        // If the result is final, add it to the transcript segments
-        if (isFinal) {
-          // Get the current speaker (for now just use "Speaker" with random number)
-          // In a real implementation, this would identify the current speaker
-          const currentSpeakerId = socket.id;
-          const speakerName = participants.find(p => p.id === currentSpeakerId)?.name || 'Unknown Speaker';
-          
-          // Add to transcript segments
-          setTranscriptSegments(prev => [
-            ...prev, 
-            { 
-              speaker: speakerName, 
-              text: currentText.trim(),
-              timestamp: new Date().toISOString()
-            }
-          ]);
-          
-          // Clear the current transcript text
-          setCurrentTranscriptText('');
-        }
-      };
+      // Increase the recognition timeout
+      recognition.addEventListener('nomatch', () => {
+        console.log("Speech recognition did not match any text");
+      });
       
-      // Handle errors
-      recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        
-        // If error is fatal, restart recognition
-        if (event.error === 'network' || event.error === 'service-not-allowed') {
-          setTimeout(() => {
-            if (isTranscribing) {
-              try {
-                recognition.start();
-              } catch (e) {
-                console.error("Failed to restart speech recognition:", e);
-              }
-            }
-          }, 3000);
-        }
-      };
-      
-      // Handle end event - restart if still transcribing
+      // Make sure to restart whenever it ends
       recognition.onend = () => {
+        console.log("Speech recognition ended - checking if restart needed");
         if (isTranscribing) {
           try {
-            recognition.start();
+            console.log("Attempting to restart speech recognition");
+            setTimeout(() => {
+              recognition.start();
+              console.log("Speech recognition restarted");
+            }, 300);
           } catch (e) {
-            console.error("Failed to restart speech recognition:", e);
+            console.error("Error restarting speech recognition:", e);
+            showNotificationMessage("Speech recognition failed to restart. Try again.", "error");
+          }
+        }
+      };
+      
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        
+        console.log(`Got speech results: ${event.results.length} results`);
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript.trim();
+          const confidence = event.results[i][0].confidence;
+          console.log(`Transcript: "${transcript}" with confidence: ${confidence}`);
+          
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' ';
+          } else {
+            interimTranscript += transcript + ' ';
+          }
+        }
+        
+        if (finalTranscript) {
+          console.log("Final transcript captured:", finalTranscript);
+          
+          // Get current user name from either localStorage or participants list
+          const currentUserName = localStorage.getItem("user_name") || 
+                                 participants.find(p => p.id === socket.id)?.name || 
+                                 "You";
+          
+          // Add text to transcript segments with current user as speaker
+          const newSegment = { 
+            speaker: currentUserName, 
+            text: finalTranscript.trim(), 
+            timestamp: new Date().toISOString() 
+          };
+          
+          setTranscriptSegments(prev => [...prev, newSegment]);
+          setCurrentTranscriptText("");
+          
+          console.log("Added transcript segment:", newSegment);
+          console.log("Current segments:", transcriptSegments.length + 1);
+        } else if (interimTranscript) {
+          setCurrentTranscriptText(interimTranscript.trim());
+        }
+      };
+      
+      recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        
+        // If it's a no-speech timeout or other error, restart
+        if (event.error === 'no-speech' || event.error === 'network' || event.error === 'aborted') {
+          if (isTranscribing) {
+            showNotificationMessage(`Speech recognition error: ${event.error}. Restarting...`, "warning");
+            try {
+              recognition.stop();
+              setTimeout(() => {
+                if (isTranscribing) {
+                  recognition.start();
+                  console.log("Restarted after speech recognition error");
+                }
+              }, 500);
+            } catch (e) {
+              console.error("Error restarting after error:", e);
+            }
           }
         }
       };
       
       setSpeechRecognition(recognition);
     } else {
-      console.warn("Speech recognition not supported in this browser");
+      console.error("Speech Recognition API not supported in this browser");
+      showNotificationMessage("Speech Recognition is not supported in your browser. Try Chrome.", "error");
     }
-    
-    // Cleanup function
-    return () => {
-      if (speechRecognition) {
-        try {
-          speechRecognition.stop();
-        } catch (e) {
-          console.error("Error stopping speech recognition:", e);
-        }
+  }, [isTranscribing, participants]);
+
+  // Handle the transcript summary
+  const getTranscriptSummary = async () => {
+    try {
+      setLoadingSummary(true);
+      const availableSegments = transcriptSegments.filter(
+        (segment) => segment.text.trim() !== ""
+      );
+
+      if (availableSegments.length === 0) {
+        setShowSummaryModal(true);
+        setLoadingSummary(false);
+        setMeetingSummary(
+          "Not enough conversation to summarize. Please speak during recording."
+        );
+        return;
       }
-    };
-  }, [participants]);
 
-  // Extract topics from transcript for local fallback
-  const extractTopicsFromTranscript = (transcript) => {
-    // Simple keyword extraction based on frequency
-    if (!transcript || transcript.length < 50) {
-      return [];
+      // For our fallback solution (no API available)
+      const fullTranscript = availableSegments
+        .map((segment) => `${segment.speaker || "You"}: ${segment.text}`)
+        .join("\n");
+
+      try {
+        // Try using API
+        const response = await fetch("http://127.0.0.1:3001/api/summary", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ transcript: fullTranscript }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to get summary from API");
+        }
+
+        const data = await response.json();
+        setMeetingSummary(data.summary);
+        
+        // Process recognized topics
+        const topics = data.topics || [];
+        setRecognizedTopics(topics);
+        
+        // Process action items - ensure they have the correct structure
+        const items = data.actionItems || [];
+        const formattedItems = items.map(item => {
+          return typeof item === 'string' 
+            ? { text: item, completed: false }
+            : { ...item, completed: item.completed || false };
+        });
+        setActionItems(formattedItems);
+        
+      } catch (error) {
+        console.error("Error fetching from API:", error);
+        
+        // Generate a local summary as fallback
+        generateLocalSummary(fullTranscript);
+      } finally {
+        setLoadingSummary(false);
+        setShowSummaryModal(true);
+      }
+    } catch (error) {
+      console.error("Error in summary generation:", error);
+      setLoadingSummary(false);
+      setShowSummaryModal(true);
+      setMeetingSummary(
+        "An error occurred while generating the summary. Please try again."
+      );
     }
+  };
 
-    // Convert to lowercase and remove common words
-    const text = transcript.toLowerCase();
-    const words = text.split(/\s+/);
+  // Function to generate a local summary as fallback when API fails
+  const generateLocalSummary = (transcript) => {
+    console.log("Generating local summary from transcript:", transcript);
     
-    // Filter out common words and short words
-    const commonWords = new Set([
-      'a', 'an', 'the', 'and', 'or', 'but', 'for', 'in', 'on', 'at', 'to', 'of', 'with',
-      'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does',
-      'did', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'this', 'that', 'these', 'those',
-      'would', 'could', 'should', 'will', 'shall', 'may', 'might', 'can', 'must', 'our', 'your',
-      'my', 'his', 'her', 'its', 'their', 'ok', 'okay', 'yes', 'no', 'yeah', 'right', 'like',
-      'um', 'uh', 'oh', 'so', 'well', 'just', 'very', 'really', 'actually', 'basically'
-    ]);
+    // Make sure we have actual text content
+    if (!transcript || transcript.trim().length < 10) {
+      setMeetingSummary(
+        "No meaningful conversation was detected during recording. Please ensure your microphone is working and speak clearly during recording."
+      );
+      setRecognizedTopics([]);
+      setActionItems([]);
+      return;
+    }
     
-    // Count word frequency
-    const wordCounts = {};
+    // Extract potential topics from transcript
+    const potentialTopics = extractTopics(transcript);
+    setRecognizedTopics(potentialTopics.length > 0 ? potentialTopics : ["No clear topics detected"]);
+    
+    // Extract potential action items
+    const potentialActionItems = extractActionItems(transcript);
+    
+    if (potentialActionItems.length > 0) {
+      setActionItems(potentialActionItems.map(item => ({ 
+        text: item, 
+        completed: false 
+      })));
+    } else {
+      setActionItems([{ 
+        text: "No clear action items detected. Try having a more detailed conversation.",
+        completed: false 
+      }]);
+    }
+    
+    // Set a basic summary
+    const speakerCount = new Set(transcriptSegments.map(segment => segment.speaker)).size;
+    const speakers = [...new Set(transcriptSegments.map(segment => segment.speaker))].join(", ");
+    const wordCount = transcript.split(/\s+/).length;
+    const estimatedMinutes = Math.max(1, Math.round(wordCount / 150));
+    
+    if (wordCount < 50) {
+      setMeetingSummary(
+        "The recorded conversation was too brief to generate a meaningful summary. " +
+        "Please have a longer discussion or check that your microphone is working properly."
+      );
+    } else {
+      setMeetingSummary(
+        "This is a locally generated summary as our AI service is currently unavailable. " +
+        "We've identified potential topics and action items from your conversation.\n\n" +
+        `The transcript included approximately ${estimatedMinutes} ${estimatedMinutes === 1 ? 'minute' : 'minutes'} ` +
+        `of conversation between ${speakerCount > 1 ? speakers : 'participants'}.\n\n` +
+        "For best results, please ensure you're speaking clearly and close to your microphone. " +
+        "Try refreshing the page if speech recognition is not working as expected."
+      );
+    }
+  };
+
+  // Function to extract potential topics from transcript
+  const extractTopics = (transcript) => {
+    // Simple heuristic to find repeated phrases or keywords
+    const words = transcript.toLowerCase().split(/\s+/);
+    const wordFrequency = {};
+    
     words.forEach(word => {
-      // Only include words with 3+ characters and not in common words list
-      if (word.length >= 3 && !commonWords.has(word)) {
-        wordCounts[word] = (wordCounts[word] || 0) + 1;
+      if (word.length > 3 && !commonWords.includes(word)) {
+        wordFrequency[word] = (wordFrequency[word] || 0) + 1;
       }
     });
     
-    // Sort by frequency and get top words
-    const topWords = Object.entries(wordCounts)
-      .sort((a, b) => b[1] - a[1])
+    // Find potential topics from word frequencies
+    return Object.entries(wordFrequency)
+      .filter(([_, count]) => count > 2)
+      .sort(([_, countA], [__, countB]) => countB - countA)
       .slice(0, 5)
-      .map(entry => entry[0]);
-      
-    return topWords.map(word => word.charAt(0).toUpperCase() + word.slice(1));
+      .map(([word]) => word.charAt(0).toUpperCase() + word.slice(1));
   };
 
-  // Handle the transcript summary
-  const handleTranscriptSummary = async () => {
-    setLoadingSummary(true);
+  // Common words to exclude from topic extraction
+  const commonWords = [
+    "the", "and", "that", "this", "with", "for", "have", "you", "not", "but", 
+    "was", "are", "what", "when", "why", "how", "from", "your", "will", "would",
+    "could", "should", "than", "then", "them", "these", "those", "there", "their",
+    "about", "which", "been", "into", "some", "very", "just", "also", "like"
+  ];
+
+  // Function to extract potential action items from transcript
+  const extractActionItems = (transcript) => {
+    // Look for sentences that might contain action items
+    const sentences = transcript.split(/[.!?]+/);
+    const actionItemPatterns = [
+      /need to/i, /should/i, /must/i, /have to/i, /going to/i, /will/i,
+      /let's/i, /let us/i, /plan to/i, /remember to/i, /don't forget/i
+    ];
     
-    try {
-      // Format transcript segments for the API
-      const formattedTranscript = transcriptSegments
-        .map(segment => `${segment.speaker}: ${segment.text}`)
-        .join('\n');
-      
-      setMeetingTranscript(formattedTranscript);
-      
-      // Add proper error handling and logging
-      console.log("Sending transcript for summarization:", { length: formattedTranscript.length });
-      
-      // Try the main API endpoint first
-      try {
-        // Use the Gemini API endpoint for summarization
-        const response = await axios.post('/api/summarize', {
-          text: formattedTranscript
-        }, {
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          timeout: 30000 // 30 second timeout
-        });
-        
-        console.log("Summary API response:", response);
-        
-        if (response.data && response.data.summary) {
-          // Properly format and set the meeting summary
-          const summaryText = response.data.summary.trim();
-          console.log("Raw summary text:", summaryText);
-          setMeetingSummary(summaryText);
-          
-          // Extract topics if available
-          if (response.data.topics && response.data.topics.length > 0) {
-            setRecognizedTopics(response.data.topics);
-          } else {
-            // Try to extract topics from the summary
-            setRecognizedTopics(extractTopicsFromTranscript(formattedTranscript));
-          }
-          setSummarySource("ai");
-          setShowSummaryModal(true);
-          return;
-        } else {
-          console.error("Invalid API response format:", response.data);
-          throw new Error('Invalid response from summarization API');
-        }
-      } catch (apiError) {
-        console.error('Primary API summarization failed:', apiError.response?.data || apiError.message);
-        
-        // Try alternate API endpoints if available
-        try {
-          showNotificationMessage("Trying alternate summarization service...", "info");
-          
-          // Try a publicly available summarization API as fallback
-          const fallbackResponse = await axios.post('https://api.hume.ai/v0/batch/nlp/summarize', {
-            text: formattedTranscript,
-            method: "abstractive",
-            max_sentences: 5
-          }, {
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Hume-Api-Key': 'demo_key' // This is a demo key, not a real API key
-            },
-            timeout: 15000
-          });
-          
-          if (fallbackResponse.data && fallbackResponse.data.summary) {
-            const summary = `MEETING SUMMARY:\n${fallbackResponse.data.summary}\n\nNote: This summary was generated using a fallback API service.`;
-            setMeetingSummary(summary);
-            setRecognizedTopics(extractTopicsFromTranscript(formattedTranscript));
-            setSummarySource("ai-fallback");
-            setShowSummaryModal(true);
-            return;
-          } else {
-            throw new Error('Invalid response from fallback API');
-          }
-        } catch (fallbackError) {
-          console.error('Fallback API also failed:', fallbackError.message);
-          showNotificationMessage('Using local summarization: API services unavailable', 'warning');
-          
-          // If both APIs fail, use the local summarization
-          const fallbackSummary = generateLocalSummary(formattedTranscript);
-          setMeetingSummary(fallbackSummary.summary);
-          setRecognizedTopics(fallbackSummary.topics);
-          setSummarySource("basic");
-          setShowSummaryModal(true);
-        }
-      }
-    } catch (error) {
-      console.error('Error generating summary:', error);
-      showNotificationMessage('Failed to generate meeting summary', 'error');
-    } finally {
-      setLoadingSummary(false);
-    }
-  };
-
-  // Helper function to generate a local summary if API fails
-  const generateLocalSummary = (transcript) => {
-    try {
-      // Basic local summarization
-      const sentences = transcript.split(/[.!?]+/).filter(s => s.trim().length > 10);
-      const topics = extractTopicsFromTranscript(transcript);
-      
-      // Generate a basic summary
-      let summary = "Meeting Summary:\n\n";
-      
-      if (topics.length > 0) {
-        summary += "Main Topics Discussed:\n";
-        topics.forEach(topic => {
-          summary += `- ${topic}\n`;
-        });
-        summary += "\n";
-      }
-      
-      // Add key points from the most important sentences
-      summary += "Key Points:\n";
-      const keyPoints = sentences
-        .filter((s, i) => i % 3 === 0 && s.length > 15) // Take every 3rd sentence as important
-        .slice(0, 5)
-        .map(s => `- ${s.trim()}`);
-        
-      summary += keyPoints.join('\n');
-      
-      return { summary, topics };
-    } catch (error) {
-      console.error('Local summarization failed:', error);
-      return { 
-        summary: "Unable to generate summary. Please check the transcript manually.", 
-        topics: [] 
-      };
-    }
+    return sentences
+      .filter(sentence => {
+        return actionItemPatterns.some(pattern => pattern.test(sentence)) && 
+               sentence.length > 20 && sentence.length < 150;
+      })
+      .map(sentence => sentence.trim())
+      .slice(0, 3);
   };
 
   // Toggle AI Summarizer function - starts/stops transcription and generates summary
@@ -884,163 +901,58 @@ useEffect(() => {
       // If already transcribing, stop and generate summary
       if (speechRecognition) {
         try {
+          console.log("Stopping speech recognition and generating summary...");
           speechRecognition.stop();
           setIsTranscribing(false);
-          showNotificationMessage("Processing meeting summary...", "info");
+          showNotificationMessage("Recording stopped. Generating meeting summary...", "info");
           
           // Generate summary from transcript if we have segments
           if (transcriptSegments.length > 0) {
-            handleTranscriptSummary();
+            console.log(`Found ${transcriptSegments.length} transcript segments, generating summary...`);
+            getTranscriptSummary();
           } else {
-            showNotificationMessage("Not enough conversation to summarize", "warning");
+            console.error("No transcript segments available to summarize");
+            showNotificationMessage("Not enough conversation to summarize. Please speak during recording.", "warning");
+            setShowSummaryModal(true);
+            setMeetingSummary("Not enough conversation to summarize. Please speak clearly during recording.");
           }
         } catch (error) {
           console.error("Error stopping speech recognition:", error);
-          showNotificationMessage("Error stopping transcription", "error");
+          showNotificationMessage("Error stopping recording", "error");
         }
       }
     } else {
       // Start transcribing
-      try {
-        // Check if speech recognition is available
-        if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-          showNotificationMessage("Speech recognition not available in your browser", "error");
-          return;
-        }
+      if (!speechRecognition) {
+        console.error("No speech recognition available");
+        showNotificationMessage("Speech recognition not available in your browser. Try Chrome or Edge.", "error");
+        return;
+      }
 
-        // Create speech recognition instance if not already created
-        if (!speechRecognition) {
-          const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-          const recognition = new SpeechRecognition();
-          
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.lang = 'en-US';
-          
-          // Handle result event - when speech is recognized
-          recognition.onresult = (event) => {
-            let currentText = '';
-            let isFinal = false;
-            
-            // Process the results
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-              const transcript = event.results[i][0].transcript;
-              currentText += transcript;
-              isFinal = event.results[i].isFinal;
-            }
-            
-            // Update the current transcript text being displayed
-            setCurrentTranscriptText(currentText);
-            
-            // If the result is final, add it to the transcript segments
-            if (isFinal) {
-              // Get the current speaker (for now just use "Speaker" with socket ID)
-              const currentSpeakerId = socket.id;
-              const speakerName = participants.find(p => p.id === currentSpeakerId)?.name || 'Unknown Speaker';
-              
-              // Add to transcript segments
-              setTranscriptSegments(prev => [
-                ...prev, 
-                { 
-                  speaker: speakerName, 
-                  text: currentText.trim(),
-                  timestamp: new Date().toISOString()
-                }
-              ]);
-              
-              // Clear the current transcript text
-              setCurrentTranscriptText('');
-            }
-          };
-          
-          // Handle errors
-          recognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
-            showNotificationMessage(`Transcription error: ${event.error}`, "error");
-            
-            // If error is fatal, restart recognition
-            if (event.error === 'network' || event.error === 'service-not-allowed') {
-              setTimeout(() => {
-                if (isTranscribing) {
-                  try {
-                    recognition.start();
-                  } catch (e) {
-                    console.error("Failed to restart speech recognition:", e);
-                  }
-                }
-              }, 3000);
-            }
-          };
-          
-          // Handle end event - restart if still transcribing
-          recognition.onend = () => {
-            console.log("Speech recognition ended");
-            if (isTranscribing) {
-              try {
-                console.log("Restarting speech recognition");
-                recognition.start();
-              } catch (e) {
-                console.error("Failed to restart speech recognition:", e);
-                setIsTranscribing(false);
-              }
-            }
-          };
-          
-          setSpeechRecognition(recognition);
-          
-          // Start the recognition
-          recognition.start();
-          setIsTranscribing(true);
-          setTranscriptionEnabled(true);
-          showNotificationMessage("AI summarizer activated - recording conversation", "success");
-          return;
-        }
-        
+      try {
+        console.log("Starting speech recognition...");
         // Reset previous transcript segments if any
         setTranscriptSegments([]);
         setRecognizedTopics([]);
+        setActionItems([]);
         
-        try {
-          // Start the speech recognition if it already exists
-          speechRecognition.start();
-          setIsTranscribing(true);
-          setTranscriptionEnabled(true);
-          showNotificationMessage("AI summarizer activated - recording conversation", "success");
-        } catch (startError) {
-          console.error("Error starting speech recognition:", startError);
-          
-          // Try to reset the recognition instance and start again
-          if (speechRecognition) {
-            try {
-              speechRecognition.stop();
-            } catch (e) {
-              console.error("Error stopping existing recognition:", e);
-            }
+        // Start the speech recognition
+        speechRecognition.start();
+        setIsTranscribing(true);
+        setTranscriptionEnabled(true);
+        
+        // Show notification with instructions for microphone access
+        showNotificationMessage("AI summarizer activated - recording conversation. Please speak clearly and allow microphone access. Click again to stop and generate summary.", "success");
+        
+        // Check if recording started successfully
+        setTimeout(() => {
+          if (isTranscribing && transcriptSegments.length === 0) {
+            console.log("Speech recognition started but no segments detected yet - this is normal");
           }
-          
-          // Create new instance as a fallback
-          const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-          const newRecognition = new SpeechRecognition();
-          newRecognition.continuous = true;
-          newRecognition.interimResults = true;
-          newRecognition.lang = 'en-US';
-          
-          // Copy the event handlers from above
-          // (simplified for brevity - handlers should be the same as above)
-          
-          setSpeechRecognition(newRecognition);
-          try {
-            newRecognition.start();
-            setIsTranscribing(true);
-            showNotificationMessage("AI summarizer activated (retry)", "info");
-          } catch (retryError) {
-            console.error("Failed to start recognition even after retry:", retryError);
-            showNotificationMessage("Failed to activate AI summarizer", "error");
-          }
-        }
+        }, 5000);
       } catch (error) {
-        console.error("Error in toggleAISummarizer:", error);
-        showNotificationMessage("Failed to activate AI summarizer", "error");
+        console.error("Error starting speech recognition:", error);
+        showNotificationMessage(`Failed to activate AI summarizer: ${error.message}. Make sure you've granted microphone permissions.`, "error");
       }
     }
   };
@@ -1125,17 +1037,116 @@ useEffect(() => {
     }
   };
 
-  // Download summary
-  const downloadSummary = () => {
-    if (meetingSummary) {
-  const element = document.createElement("a");
-  const file = new Blob([meetingSummary], { type: "text/plain" });
-  element.href = URL.createObjectURL(file);
-      element.download = `${projectName.replace(/\s+/g, '-').toLowerCase()}-meeting-summary.txt`;
-  document.body.appendChild(element);
-  element.click();
-  document.body.removeChild(element);
+  // Add translation function
+  const translateSummary = async (targetLanguage) => {
+    if (!meetingSummary) return;
+    
+    setIsTranslating(true);
+    try {
+      console.log(`Translating summary to ${targetLanguage}...`);
+      
+      const apiUrl = 'http://localhost:3001/api/translate';
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          text: meetingSummary,
+          targetLanguage 
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setTranslatedSummary(data.translatedText);
+        setTranslationLanguage(targetLanguage);
+        showNotificationMessage(`Summary translated to ${getLanguageName(targetLanguage)}`, "success");
+      } else {
+        const error = await response.json();
+        throw new Error(error.details || error.error || "Translation failed");
+      }
+    } catch (error) {
+      console.error("Translation error:", error);
+      showNotificationMessage(`Translation failed: ${error.message}`, "error");
+      // If translation fails, keep using the original summary
+      setTranslatedSummary("");
+    } finally {
+      setIsTranslating(false);
     }
+  };
+
+  // Helper to get language name from code
+  const getLanguageName = (code) => {
+    const languages = {
+      en: "English",
+      es: "Spanish",
+      fr: "French",
+      de: "German",
+      it: "Italian",
+      pt: "Portuguese",
+      ru: "Russian",
+      zh: "Chinese",
+      ja: "Japanese",
+      ko: "Korean",
+      hi: "Hindi"
+    };
+    return languages[code] || code;
+  };
+
+  // Enhanced function to download summary with better formatting
+  const downloadSummary = () => {
+    const content = generateSummaryContent(meetingSummary, recognizedTopics, actionItems);
+    
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    
+    const date = new Date().toISOString().split('T')[0];
+    a.download = `meeting-summary-${date}.txt`;
+    a.href = url;
+    a.click();
+    
+    URL.revokeObjectURL(url);
+    toast.success('Summary downloaded successfully!');
+  };
+
+  // Helper function to generate formatted summary content
+  const generateSummaryContent = (summary, topics, actions) => {
+    const date = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    
+    const time = new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    let content = `MEETING SUMMARY - ${date} at ${time}\n\n`;
+    
+    // Add summary text
+    content += `${summary}\n\n`;
+    
+    // Add topics if available
+    if (topics && topics.length > 0) {
+      content += `DISCUSSED TOPICS:\n`;
+      topics.forEach(topic => {
+        content += `• ${topic}\n`;
+      });
+      content += '\n';
+    }
+    
+    // Add action items if available
+    if (actions && actions.length > 0) {
+      content += `ACTION ITEMS:\n`;
+      actions.forEach(item => {
+        content += `[ ] ${item}\n`;
+      });
+    }
+    
+    return content;
   };
 
   // End call and navigate back
@@ -1171,587 +1182,435 @@ useEffect(() => {
 
   const navigate = useNavigate();
 
-  // Mock transcript generator for testing
-  const generateMockTranscriptForTesting = () => {
-    const mockTranscript = [
-      { speaker: "Alice", text: "Hi everyone, let's begin our project planning meeting for the new mobile app.", timestamp: new Date().toISOString() },
-      { speaker: "Bob", text: "Thanks Alice. I've been working on the UI designs and have completed about 70% of the screens.", timestamp: new Date().toISOString() },
-      { speaker: "Charlie", text: "That's great progress Bob. Did you consider the dark mode requirements we discussed last week?", timestamp: new Date().toISOString() },
-      { speaker: "Bob", text: "Yes, all screens have both light and dark mode variants. I'll share the Figma link after the meeting.", timestamp: new Date().toISOString() },
-      { speaker: "Alice", text: "Perfect. What about the backend API? David, any updates on that front?", timestamp: new Date().toISOString() },
-      { speaker: "David", text: "I've set up the basic structure and implemented the authentication endpoints. Still working on the data models for the content management system.", timestamp: new Date().toISOString() },
-      { speaker: "Alice", text: "When do you think that will be ready for testing?", timestamp: new Date().toISOString() },
-      { speaker: "David", text: "I should have it ready by next Friday. I'll need some test data to work with though.", timestamp: new Date().toISOString() },
-      { speaker: "Charlie", text: "I can help with generating test data. I'll prepare some JSON fixtures this week.", timestamp: new Date().toISOString() },
-      { speaker: "Alice", text: "Great! Let's also discuss the project timeline. We initially planned to launch in December, but we might need to push it to January.", timestamp: new Date().toISOString() },
-      { speaker: "Bob", text: "What's causing the delay?", timestamp: new Date().toISOString() },
-      { speaker: "Alice", text: "We need more time for QA and user testing. Plus, launching right before the holidays isn't ideal from a marketing perspective.", timestamp: new Date().toISOString() },
-      { speaker: "Charlie", text: "I agree with Alice. January would be better. We could aim for the second week of January after everyone is back from vacation.", timestamp: new Date().toISOString() },
-      { speaker: "David", text: "That works for me. It gives us more time to polish the product.", timestamp: new Date().toISOString() },
-      { speaker: "Alice", text: "Then it's settled. Our new launch date is January 15th. Let's update the project plan accordingly.", timestamp: new Date().toISOString() },
-      { speaker: "Bob", text: "Should we schedule additional testing sessions in December then?", timestamp: new Date().toISOString() },
-      { speaker: "Alice", text: "Yes, let's plan for a beta release to internal users by December 10th, and then a wider testing group by December 20th.", timestamp: new Date().toISOString() },
-      { speaker: "Charlie", text: "I'll coordinate with the QA team to set up the testing schedule.", timestamp: new Date().toISOString() },
-      { speaker: "Alice", text: "Perfect. Any other concerns or questions we should address today?", timestamp: new Date().toISOString() },
-      { speaker: "David", text: "Just one thing - we need to decide on the analytics solution we'll be using. Do we stick with Google Analytics or try something new?", timestamp: new Date().toISOString() },
-      { speaker: "Alice", text: "Let's discuss that in our next meeting. I'll do some research on alternatives before then.", timestamp: new Date().toISOString() },
-      { speaker: "Alice", text: "If there's nothing else, let's wrap up for today. Thanks everyone for your updates.", timestamp: new Date().toISOString() }
-    ];
-    
-    return mockTranscript;
-  };
-
-  // Function to test the summarizer with mock data
-  const testSummarizerWithMockData = () => {
-    setLoadingSummary(true);
-    showNotificationMessage("Testing summarizer with mock data...", "info");
-    
-    // Set mock transcript data
-    const mockTranscript = generateMockTranscriptForTesting();
-    setTranscriptSegments(mockTranscript);
-    
-    // Process the summary
-    setTimeout(() => {
-      handleTranscriptSummary();
-    }, 500);
-  };
-
-  // Handle keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Ctrl+Alt+S for testing the summarizer with mock data
-      if (e.ctrlKey && e.altKey && e.key === 's') {
-        e.preventDefault();
-        testSummarizerWithMockData();
-      }
-      
-      // Alt+D to toggle debug mode
-      if (e.altKey && e.key === 'd') {
-        e.preventDefault();
-        setShowDebugControls(prev => !prev);
-        showNotificationMessage("Debug controls toggled", "info");
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, []);
-
-  // Close summary modal
-  const closeSummaryModal = () => {
-    setShowSummaryModal(false);
-  };
-
-  // Process summary text for rendering
-  const processSummaryText = (text) => {
-    if (!text) return [];
-    
-    // Split into paragraphs
-    const paragraphs = text.split('\n');
-    
-    // Process each paragraph
-    return paragraphs.map((para, index) => {
-      // Skip empty lines
-      if (!para.trim()) return { type: 'empty', content: '', key: `empty-${index}` };
-      
-      // Check if it's a section heading
-      if (para.includes('MEETING SUMMARY:') || 
-          para.includes('KEY POINTS:') || 
-          para.includes('DECISIONS:') || 
-          para.includes('ACTION ITEMS:')) {
-        return { type: 'heading', content: para, key: `heading-${index}` };
-      }
-      
-      // Handle topics section specially
-      if (para.includes('TOPICS:')) {
-        return { type: 'heading', content: 'TOPICS:', key: `heading-topics` };
-      }
-      
-      // Check if it's a JSON array (topics)
-      if (para.trim().startsWith('[') && para.trim().endsWith(']')) {
-        try {
-          // Try to parse it as JSON
-          const topics = JSON.parse(para);
-          return { 
-            type: 'topics', 
-            content: topics, 
-            key: `topics-${index}` 
-          };
-        } catch (e) {
-          // If not valid JSON, treat as normal paragraph
-          return { type: 'paragraph', content: para, key: `para-${index}` };
-        }
-      }
-      
-      // Check if it's a bullet point
-      if (para.trim().startsWith('-')) {
-        return { 
-          type: 'bullet', 
-          content: para.trim().substring(1).trim(), 
-          key: `bullet-${index}` 
-        };
-      }
-      
-      // Regular paragraph
-      return { type: 'paragraph', content: para, key: `para-${index}` };
+  const toggleActionItemComplete = (index) => {
+    setActionItems(prevItems => {
+      const newItems = [...prevItems];
+      newItems[index] = {
+        ...newItems[index],
+        completed: !newItems[index].completed
+      };
+      return newItems;
     });
   };
 
   return (
     <div className="video-conference">
-        {/* Header */}
-        <header className="meeting-header">
-          <div className="header-left">
-            <button className="header-back-button" onClick={() => {
-              // Check if user is admin and navigate to appropriate dashboard
-              const isAdmin = localStorage.getItem("isAdmin") === "true";
-              navigate(isAdmin ? "/dashboard/admin" : "/dashboard/user");
-            }}>
-              <ArrowLeft size={20} />
-            </button>
-            <h1 className="meeting-title">{projectName}</h1>
-            <div className="meeting-timer">
-              <Clock size={14} />
-              <span>{formatMeetingTime(meetingTime)}</span>
+      {/* Transcription indicator - shows when recording is active */}
+      {isTranscribing && (
+        <div className="transcription-indicator">
+          <span className="pulse-dot"></span>
+          <span className="recording-text">Recording conversation</span>
         </div>
-          </div>
-          <div className="header-right">
-            {recording && (
-              <div className="recording-indicator">
-                <span className="recording-dot"></span>
-                REC
-              </div>
-            )}
-            <button 
-              className="layout-toggle-button" 
-              onClick={toggleLayout}
-              title="Change layout"
-            >
-              <Layout size={18} />
-            </button>
-          </div>
-        </header>
+      )}
 
-        {/* Video Grid */}
-        <div className={`video-grid layout-${layoutMode} ${screenSharing ? 'screen-active' : ''}`}>
+      <div className="meeting-header">
+        <div className="meeting-info">
+          <button className="back-button" onClick={() => navigate("/dashboard")}>
+            <ArrowLeft size={18} />
+          </button>
+          <h1>{projectName || "Meeting"}</h1>
+          <div className="meeting-duration">
+            <Clock size={14} />
+            <span>{formatMeetingTime(meetingTime)}</span>
+          </div>
+        </div>
+        <div className="meeting-controls">
+          <button 
+            className="layout-toggle-button" 
+            onClick={toggleLayout}
+            title="Change layout"
+          >
+            <Layout size={18} />
+          </button>
+        </div>
+      </div>
+
+      {/* Video Grid */}
+      <div className={`video-grid layout-${layoutMode} ${screenSharing ? 'screen-active' : ''}`}>
         {screenSharing && (
           <div className="screen-share-container">
-              <video
-                ref={screenVideo}
-                autoPlay
-                playsInline
-                className="screen-share-video"
-              />
-              <div className="debug-overlay">
-                {!screenStream && <p className="debug-text">No screen stream available</p>}
-              </div>
+            <video
+              ref={screenVideo}
+              autoPlay
+              playsInline
+              className="screen-share-video"
+            />
+            <div className="debug-overlay">
+              {!screenStream && <p className="debug-text">No screen stream available</p>}
+            </div>
           </div>
         )}
-          
-          <div className={`participants-videos layout-${layoutMode}`}>
-            {participants.map((participant) => {
-              const isLocal = participant.id === socket.id;
-              
-              if (isLocal) {
-                return (
-                  <div 
-                    key={participant.id} 
-                    className={`video-box ${activeSpeaker === participant.id ? 'active-speaker' : ''} ${!participant.cameraOn ? 'camera-off' : ''}`}
-                  >
-                    {participant.cameraOn ? (
-                      <>
-                        <video
-                          ref={myVideo}
-                          autoPlay
-                          playsInline
-                          muted
-                          className="mirror"
-                        />
-                        {!stream && <div className="debug-overlay"><p className="debug-text">No camera stream</p></div>}
-                      </>
-                    ) : (
-                      <div className="avatar-placeholder">
-                        <div className="avatar-circle">
-                          {participant.name.charAt(0).toUpperCase()}
-                </div>
-                      </div>
-                    )}
-                    
-                    <div className="participant-info">
-                      <span className="participant-name">
-                        {participant.name} (You)
-                      </span>
-                      <div className="participant-status">
-                        {!participant.micOn && <MicOff size={16} className="status-icon muted" />}
-                      </div>
-                    </div>
-                  </div>
-                );
-              } else {
-                // Remote participant
-                const remoteStream = remoteStreams.find(s => s.userId === participant.id);
-                return (
-                  <div 
-                    key={participant.id} 
-                    className={`video-box ${activeSpeaker === participant.id ? 'active-speaker' : ''} ${!participant.cameraOn ? 'camera-off' : ''}`}
-                  >
-                    {participant.cameraOn && remoteStream ? (
+        
+        <div className={`participants-videos layout-${layoutMode}`}>
+          {participants.map((participant) => {
+            const isLocal = participant.id === socket.id;
+            
+            if (isLocal) {
+              return (
+                <div 
+                  key={participant.id} 
+                  className={`video-box ${activeSpeaker === participant.id ? 'active-speaker' : ''} ${!participant.cameraOn ? 'camera-off' : ''}`}
+                >
+                  {participant.cameraOn ? (
+                    <>
                       <video
-                        ref={(el) => handleRemoteVideoRef(el, remoteStream)}
+                        ref={myVideo}
                         autoPlay
                         playsInline
+                        muted
+                        className="mirror"
                       />
-                    ) : (
-                      <div className="avatar-placeholder">
-                        <div className="avatar-circle">
-                          {participant.name.charAt(0).toUpperCase()}
-                        </div>
-                      </div>
-                    )}
-                    
-                    <div className="participant-info">
-                      <span className="participant-name">
-                        {participant.name}
-                      </span>
-                      <div className="participant-status">
-                        {!participant.micOn && <MicOff size={16} className="status-icon muted" />}
+                      {!stream && <div className="debug-overlay"><p className="debug-text">No camera stream</p></div>}
+                    </>
+                  ) : (
+                    <div className="avatar-placeholder">
+                      <div className="avatar-circle">
+                        {participant.name.charAt(0).toUpperCase()}
                       </div>
                     </div>
-                  </div>
-                );
-              }
-            })}
-          </div>
-        </div>
-
-        {/* Call Controls - Simplified */}
-      <div className="call-controls">
-          <button 
-            className={`control-btn mic-btn ${!micOn ? 'off' : ''}`} 
-            onClick={toggleMic}
-            title={micOn ? "Mute microphone" : "Unmute microphone"}
-          >
-            {micOn ? <Mic size={20} /> : <MicOff size={20} />}
-    </button>
-    
-          <button 
-            className={`control-btn camera-btn ${!cameraOn ? 'off' : ''}`} 
-            onClick={toggleCamera}
-            title={cameraOn ? "Turn off camera" : "Turn on camera"}
-          >
-            {cameraOn ? <Video size={20} /> : <VideoOff size={20} />}
-    </button>
-
-          <button 
-            className={`control-btn share-btn ${screenSharing ? 'active' : ''}`} 
-            onClick={toggleScreenShare}
-            title={screenSharing ? "Stop sharing" : "Share screen"}
-          >
-            {screenSharing ? <StopCircle size={20} /> : <Share2 size={20} />}
-    </button>
-
-          <button 
-            className={`control-btn chat-btn`} 
-            onClick={toggleChat}
-            title="Toggle chat"
-          >
-            <MessageSquare size={20} />
-    </button>
-
-          <button 
-            className={`control-btn recording-btn ${recording ? 'active' : ''}`} 
-            onClick={toggleRecording}
-            title={recording ? "Stop recording" : "Start recording"}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <circle cx="12" cy="12" r="3"></circle>
-            </svg>
-          </button>
-          
-          <button 
-            className={`control-btn ai-summarizer ${isTranscribing ? 'active' : ''} ${loadingSummary ? 'loading' : ''}`}
-            onClick={toggleAISummarizer}
-            title={isTranscribing ? "Stop recording and generate summary" : "Start AI meeting summarizer"}
-            disabled={loadingSummary}
-          >
-            {isTranscribing ? (
-              <div className="recording-indicator">
-                <span className="recording-dot"></span>
-                <FileText size={20} />
-              </div>
-            ) : loadingSummary ? (
-              <div className="loading-spinner-small"></div>
-            ) : (
-              <FileText size={20} />
-            )}
-          </button>
-          
-          <button 
-            className="control-btn end-call-btn" 
-            onClick={handleEndCall}
-            title="End call"
-          >
-            <Phone size={20} />
-  </button>
-        </div>
-
-        {/* Participants Sidebar */}
-        {showParticipants && (
-          <div className="participants-sidebar">
-            <div className="sidebar-header">
-              <h3>
-                <Users size={16} className="sidebar-icon" />
-                Participants ({participants.length})
-              </h3>
-              <button 
-                className="close-sidebar" 
-                onClick={toggleParticipants}
-                aria-label="Close participants panel"
-              >
-                <XCircle size={18} />
-</button>
-            </div>
-            
-            <div className="participant-list">
-              {participants.map((participant) => (
-                <div key={participant.id} className="participant-item">
-                  <div className="participant-item-name">
-                    {participant.name} {participant.id === socket.id && "(You)"}
-                  </div>
-                  <div className="status-icons">
-                    {!participant.micOn && <MicOff size={16} className="status-icon mic-off" />}
-                    {!participant.cameraOn && <VideoOff size={16} className="status-icon camera-off" />}
+                  )}
+                  
+                  <div className="participant-info">
+                    <span className="participant-name">
+                      {participant.name} (You)
+                    </span>
+                    <div className="participant-status">
+                      {!participant.micOn && <MicOff size={16} className="status-icon muted" />}
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              );
+            } else {
+              // Remote participant
+              const remoteStream = remoteStreams.find(s => s.userId === participant.id);
+              return (
+                <div 
+                  key={participant.id} 
+                  className={`video-box ${activeSpeaker === participant.id ? 'active-speaker' : ''} ${!participant.cameraOn ? 'camera-off' : ''}`}
+                >
+                  {participant.cameraOn && remoteStream ? (
+                    <video
+                      ref={(el) => handleRemoteVideoRef(el, remoteStream)}
+                      autoPlay
+                      playsInline
+                    />
+                  ) : (
+                    <div className="avatar-placeholder">
+                      <div className="avatar-circle">
+                        {participant.name.charAt(0).toUpperCase()}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="participant-info">
+                    <span className="participant-name">
+                      {participant.name}
+                    </span>
+                    <div className="participant-status">
+                      {!participant.micOn && <MicOff size={16} className="status-icon muted" />}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+          })}
+        </div>
+      </div>
 
-        {/* Chat Sidebar */}
-        {showChat && (
-          <div className="chat-sidebar">
-            <div className="sidebar-header">
-              <h3>
-                <MessageSquare size={16} className="sidebar-icon" />
-                Meeting Chat
-              </h3>
+      {/* Call Controls - Simplified */}
+      <div className="call-controls">
+        <button 
+          className={`control-btn mic-btn ${!micOn ? 'off' : ''}`} 
+          onClick={toggleMic}
+          title={micOn ? "Mute microphone" : "Unmute microphone"}
+        >
+          {micOn ? <Mic size={20} /> : <MicOff size={20} />}
+        </button>
+        
+        <button 
+          className={`control-btn camera-btn ${!cameraOn ? 'off' : ''}`} 
+          onClick={toggleCamera}
+          title={cameraOn ? "Turn off camera" : "Turn on camera"}
+        >
+          {cameraOn ? <Video size={20} /> : <VideoOff size={20} />}
+        </button>
+
+        <button 
+          className={`control-btn share-btn ${screenSharing ? 'active' : ''}`} 
+          onClick={toggleScreenShare}
+          title={screenSharing ? "Stop sharing" : "Share screen"}
+        >
+          {screenSharing ? <StopCircle size={20} /> : <Share2 size={20} />}
+        </button>
+
+        <button 
+          className={`control-btn chat-btn`} 
+          onClick={toggleChat}
+          title="Toggle chat"
+        >
+          <MessageSquare size={20} />
+        </button>
+
+        <button 
+          className={`control-btn recording-btn ${recording ? 'active' : ''}`} 
+          onClick={toggleRecording}
+          title={recording ? "Stop recording" : "Start recording"}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+        
+        <button 
+          className={`control-btn ai-summarizer ${isTranscribing ? 'active' : ''} ${loadingSummary ? 'loading' : ''}`}
+          onClick={toggleAISummarizer}
+          title={isTranscribing ? "Stop recording and generate summary" : "Start AI meeting summarizer"}
+          disabled={loadingSummary}
+        >
+          {isTranscribing ? (
+            <>
+              <span className="recording-indicator"></span>
+              <FileText size={20} />
+              <span className="recording-text">Recording...</span>
+            </>
+          ) : (
+            <FileText size={20} />
+          )}
+        </button>
+        
+        <button 
+          className="control-btn end-call-btn" 
+          onClick={handleEndCall}
+          title="End call"
+        >
+          <Phone size={20} />
+        </button>
+      </div>
+
+      {/* Participants Sidebar */}
+      {showParticipants && (
+        <div className="participants-sidebar">
+          <div className="sidebar-header">
+            <h3>
+              <Users size={16} className="sidebar-icon" />
+              Participants ({participants.length})
+            </h3>
+            <button 
+              className="close-sidebar" 
+              onClick={toggleParticipants}
+              aria-label="Close participants panel"
+            >
+              <XCircle size={18} />
+            </button>
+          </div>
+          
+          <div className="participant-list">
+            {participants.map((participant) => (
+              <div key={participant.id} className="participant-item">
+                <div className="participant-item-name">
+                  {participant.name} {participant.id === socket.id && "(You)"}
+                </div>
+                <div className="status-icons">
+                  {!participant.micOn && <MicOff size={16} className="status-icon mic-off" />}
+                  {!participant.cameraOn && <VideoOff size={16} className="status-icon camera-off" />}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Chat Sidebar */}
+      {showChat && (
+        <div className="chat-sidebar">
+          <div className="sidebar-header">
+            <h3>
+              <MessageSquare size={16} className="sidebar-icon" />
+              Meeting Chat
+            </h3>
+            <button 
+              className="close-sidebar" 
+              onClick={toggleChat}
+              aria-label="Close chat panel"
+            >
+              <XCircle size={18} />
+            </button>
+          </div>
+          
+          <div className="chat-messages" ref={chatContainerRef}>
+            {chatMessages.length === 0 ? (
+              <div className="empty-chat">
+                <p>No messages yet</p>
+                <p className="empty-chat-subtext">Be the first to send a message</p>
+              </div>
+            ) : (
+              chatMessages.map((msg, index) => (
+                <div 
+                  key={index} 
+                  className={`chat-message ${msg.isLocal ? 'local-message' : 'remote-message'}`}
+                >
+                  <div className="message-sender">{msg.sender}</div>
+                  <div className="message-content">{msg.content}</div>
+                  <div className="message-time">
+                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <form className="chat-input-form" onSubmit={sendChatMessage}>
+            <input 
+              type="text" 
+              placeholder="Type a message..." 
+              value={newMessage} 
+              onChange={(e) => setNewMessage(e.target.value)}
+              className="chat-input"
+            />
+            <button type="submit" className="chat-send-button">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Summary modal */}
+      {showSummaryModal && (
+        <div className="meeting-summary-modal">
+          <div className="summary-content">
+            <div className="summary-header">
+              <h3>Meeting Summary</h3>
               <button 
-                className="close-sidebar" 
-                onClick={toggleChat}
-                aria-label="Close chat panel"
+                className="close-summary" 
+                onClick={() => {
+                  setShowSummaryModal(false);
+                  setTranslatedSummary(null);
+                }}
               >
-                <XCircle size={18} />
+                <X size={20} />
               </button>
             </div>
-            
-            <div className="chat-messages" ref={chatContainerRef}>
-              {chatMessages.length === 0 ? (
-                <div className="empty-chat">
-                  <p>No messages yet</p>
-                  <p className="empty-chat-subtext">Be the first to send a message</p>
+
+            <div className="summary-text">
+              {/* Summary text */}
+              {isLoadingSummary ? (
+                <div className="loading-summary">
+                  <div className="spinner"></div>
+                  <p>Generating summary...</p>
+                </div>
+              ) : isTranslating ? (
+                <div className="loading-summary">
+                  <div className="spinner"></div>
+                  <p>Translating summary...</p>
                 </div>
               ) : (
-                chatMessages.map((msg, index) => (
-                  <div 
-                    key={index} 
-                    className={`chat-message ${msg.isLocal ? 'local-message' : 'remote-message'}`}
-                  >
-                    <div className="message-sender">{msg.sender}</div>
-                    <div className="message-content">{msg.content}</div>
-                    <div className="message-time">
-                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  </div>
-                ))
-              )}
-</div>
-
-            <form className="chat-input-form" onSubmit={sendChatMessage}>
-              <input 
-                type="text" 
-                placeholder="Type a message..." 
-                value={newMessage} 
-                onChange={(e) => setNewMessage(e.target.value)}
-                className="chat-input"
-              />
-              <button type="submit" className="chat-send-button">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13"></line>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* Meeting Summary Modal */}
-        {showSummaryModal && meetingSummary && (
-          <div className="meeting-summary-modal">
-            <div className="summary-content">
-              <div className="summary-header">
-                <h3>
-                  <FileSpreadsheet size={18} />
-                  Meeting Summary {summarySource !== "ai" && summarySource !== "ai-fallback" && "(Local)"}
-                </h3>
-                <button 
-                  className="close-summary" 
-                  onClick={closeSummaryModal}
-                  aria-label="Close summary"
-                >
-                  <XCircle size={18} />
-                </button>
-              </div>
-              
-              <div className="summary-scrollable">
-                <div className="summary-text">
-                  {processSummaryText(meetingSummary).map(item => {
-                    switch (item.type) {
-                      case 'empty':
-                        return <div key={item.key} className="summary-empty-line"></div>;
-                      case 'heading':
-                        return <h4 key={item.key} className="summary-section-header">{item.content}</h4>;
-                      case 'bullet':
-                        return <div key={item.key} className="summary-bullet-point">
-                          <span className="bullet-marker">•</span>
-                          <span>{item.content}</span>
-                        </div>;
-                      case 'topics':
-                        return <div key={item.key} className="summary-topics-list">
-                          {item.content.map((topic, i) => (
-                            <span key={`topic-${i}`} className="summary-topic-tag">{topic}</span>
-                          ))}
-                        </div>;
-                      case 'paragraph':
-                      default:
-                        return <p key={item.key}>{item.content}</p>;
-                    }
-                  })}
+                <div>
+                  <p>{translatedSummary || meetingSummary}</p>
                   
-                  {/* Fallback Notes */}
-                  {summarySource === "basic" && (
-                    <div className="summary-fallback-note summary-fallback-basic">
-                      <AlertCircle size={16} />
-                      Note: This is a basic summary created because the AI service was unavailable.
+                  {/* Display recognized topics if not in translated view */}
+                  {recognizedTopics.length > 0 && !translatedSummary && (
+                    <div className="topics-section">
+                      <h4>Topics Discussed:</h4>
+                      <ul className="topics-list-display">
+                        {recognizedTopics.map((topic, index) => (
+                          <li key={index} className="topic-item">{topic}</li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                   
-                  {summarySource === "ai-fallback" && (
-                    <div className="summary-fallback-note summary-fallback-alternate">
-                      <AlertCircle size={16} />
-                      Note: This summary was generated using an alternate AI service.
+                  {/* Action items section */}
+                  {actionItems.length > 0 && !translatedSummary && (
+                    <div className="action-items-section">
+                      <h4>Action Items:</h4>
+                      <ul className="action-items-list">
+                        {actionItems.map((item, index) => (
+                          <li key={index} className="action-item">
+                            <input
+                              type="checkbox"
+                              id={`action-item-${index}`}
+                              checked={item.completed || false}
+                              onChange={() => toggleActionItemComplete(index)}
+                            />
+                            <label htmlFor={`action-item-${index}`}>
+                              {item.text || item}
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                 </div>
-              </div>
-              
-              <div className="summary-meta">
-                Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()} • Meeting duration: {formatMeetingTime(meetingTime)}
-              </div>
-              
-              <div className="summary-actions">
-                <button 
-                  className="copy-summary" 
-                  onClick={copySummary}
-                >
-                  {summaryJustCopied ? <CheckCircle size={16} /> : <Copy size={16} />}
-                  {summaryJustCopied ? "Copied!" : "Copy to Clipboard"}
-                </button>
-                
-                <button 
-                  className="download-summary" 
-                  onClick={downloadSummary}
-                >
-                  <Download size={16} />
-                  Download Summary
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Notification */}
-        {showNotification && (
-          <div className={`notification notification-${notificationType}`}>
-            {notificationType === 'success' && <CheckCircle size={16} className="notification-icon" />}
-            {notificationType === 'error' && <AlertCircle size={16} className="notification-icon" />}
-            {notificationType === 'info' && <div className="notification-icon info-icon">i</div>}
-            <span>{notificationMessage}</span>
-          </div>
-        )}
-
-        {/* Loading Overlay for Summary */}
-        {loadingSummary && (
-          <div className="loading-overlay">
-            <div className="loading-spinner"></div>
-            <p>AI is generating your meeting summary...</p>
-          </div>
-        )}
-
-        {/* Transcription status indicator */}
-        {isTranscribing && (
-          <div className="transcription-indicator">
-            <span className="pulse-dot"></span>
-            <span className="transcription-label">AI is recording</span>
-            {currentTranscriptText && (
-              <div className="interim-transcript">
-                "{currentTranscriptText.length > 50 
-                  ? currentTranscriptText.substring(0, 50) + '...' 
-                  : currentTranscriptText}"
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Topic Indicator */}
-        {recognizedTopics.length > 0 && (
-          <div className="topics-indicator">
-            <div className="topics-header">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="16" x2="12" y2="12"></line>
-                <line x1="12" y1="8" x2="12.01" y2="8"></line>
-              </svg>
-              <span>Topics Detected:</span>
-            </div>
-            <div className="topics-list">
-              {recognizedTopics.slice(0, 3).map((topic, index) => (
-                <div key={index} className="topic-tag">{topic}</div>
-              ))}
-              {recognizedTopics.length > 3 && (
-                <div className="topic-tag more-topics">+{recognizedTopics.length - 3} more</div>
               )}
             </div>
-          </div>
-        )}
 
-        {/* Debug Controls */}
-        {showDebugControls && (
-          <div className="debug-controls">
-            <button 
-              className="debug-button test-summary"
-              onClick={testSummarizerWithMockData}
-              title="Test summarizer with mock data"
-            >
-              Test AI Summary
-            </button>
-            <button 
-              className="debug-button test-api"
-              onClick={() => window.open('/test-gemini', '_blank')}
-              title="Test Gemini API"
-            >
-              Test API
-            </button>
-            <div className="debug-info">
-              <p>Debug Mode: Active</p>
-              <p>API Key Status: {window.location.hostname === 'localhost' ? 'Local Dev' : 'Production'}</p>
+            {/* Summary actions */}
+            <div className="summary-actions">
+              <button 
+                className="download-summary" 
+                onClick={downloadSummary}
+              >
+                <i className="fas fa-download"></i> Download Summary
+              </button>
+              <button 
+                className="copy-summary" 
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    generateSummaryContent(meetingSummary, recognizedTopics, actionItems)
+                  );
+                  toast.success("Summary copied to clipboard!");
+                }}
+              >
+                <i className="fas fa-copy"></i> Copy to Clipboard
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* Notification */}
+      {showNotification && (
+        <div className={`notification notification-${notificationType}`}>
+          {notificationType === 'success' && <CheckCircle size={16} className="notification-icon" />}
+          {notificationType === 'error' && <AlertCircle size={16} className="notification-icon" />}
+          {notificationType === 'info' && <div className="notification-icon info-icon">i</div>}
+          <span>{notificationMessage}</span>
+        </div>
+      )}
+
+      {/* Loading Overlay for Summary */}
+      {loadingSummary && (
+        <div className="loading-overlay">
+          <div className="loading-spinner"></div>
+          <p>Generating meeting summary...</p>
+        </div>
+      )}
+
+      {/* Topic Indicator */}
+      {recognizedTopics.length > 0 && (
+        <div className="topics-indicator">
+          <div className="topics-header">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <span>Topics Detected:</span>
+          </div>
+          <div className="topics-list">
+            {recognizedTopics.slice(0, 3).map((topic, index) => (
+              <div key={index} className="topic-tag">{topic}</div>
+            ))}
+            {recognizedTopics.length > 3 && (
+              <div className="topic-tag more-topics">+{recognizedTopics.length - 3} more</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

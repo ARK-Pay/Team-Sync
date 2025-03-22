@@ -146,6 +146,11 @@ const OTP = ({ email, name, otpVerified, setOtpVerified, reason }) => {
         localStorage.setItem("userJoindate", response.data.joined_at); // Store user join date in local storage
         //set localstorage item userId for admin or user as per recieved
         localStorage.setItem("userId", decoded.admin_id || decoded.user_id);
+        
+        // Store profile image if available
+        if (response.data.profileImage) {
+          localStorage.setItem("userProfileImage", response.data.profileImage);
+        }
 
         setOtpVerified(true); // Mark OTP as verified
         setOtp(""); // Clear OTP input

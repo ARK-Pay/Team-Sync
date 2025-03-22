@@ -8,18 +8,16 @@ const userRouter = require("./routes/user");
 const projectRouter = require("./routes/project");
 const taskRouter = require("./routes/task");
 const commentRouter = require("./routes/comment");
+const summarizerRouter = require("./routes/summarizer");
+const translatorRouter = require("./routes/translator");
 
 const app = express();
 const PORT = 3001; // Move this above app.listen()
 
 // Middleware for parsing request bodies
 app.use(cors());
-app.use(bodyParser.json());
-app.use(express.json());
-
-// Import and use the summarizer router
-const summarizerRouter = require('./routes/summarizer');
-app.use('/api', summarizerRouter);
+app.use(bodyParser.json({ limit: '10mb' })); // Increased limit for large transcripts
+app.use(express.json({ limit: '10mb' }));
 
 // Routes
 app.use("/admin", adminRouter);
@@ -27,6 +25,8 @@ app.use("/user", userRouter);
 app.use("/project", projectRouter);
 app.use("/task", taskRouter);
 app.use("/comment", commentRouter);
+app.use("/api", summarizerRouter);
+app.use("/api", translatorRouter);
 
 // Start server only after connecting to MongoDB
 const startBackend = async () => {
