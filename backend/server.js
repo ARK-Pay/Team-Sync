@@ -2,8 +2,6 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import mediasoup from "mediasoup";
-import cors from "cors";
-import axios from "axios";
 
 const app = express();
 const server = http.createServer(app);
@@ -12,87 +10,6 @@ const io = new Server(server, {
     origin: "*",
     methods: ["GET", "POST"],
   },
-});
-
-// Use middleware
-app.use(cors());
-app.use(express.json());
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-  next();
-});
-
-// Test endpoint for Gemini API
-app.get('/test-gemini', async (req, res) => {
-  require('dotenv').config();
-  
-  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-  
-  if (!GEMINI_API_KEY) {
-    return res.status(500).json({ error: "Gemini API key not found in environment" });
-  }
-  
-  try {
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        contents: [
-          { parts: [{ text: "Hello, please respond with 'Gemini API is working'" }] }
-        ]
-      },
-      { headers: { "Content-Type": "application/json" } }
-    );
-    
-    const result = response.data.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
-    
-    res.json({ 
-      success: true, 
-      message: "API test successful", 
-      response: result,
-      apiKeyLength: GEMINI_API_KEY.length
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message,
-      details: error.response?.data || "No additional details"
-    });
-  }
-});
-
-// Test route for the summarizer
-app.get('/test-summarizer', async (req, res) => {
-  try {
-    const mockTranscript = `
-Alice: Hi everyone, let's begin our project planning meeting for the new mobile app.
-Bob: Thanks Alice. I've been working on the UI designs and have completed about 70% of the screens.
-Charlie: That's great progress Bob. Did you consider the dark mode requirements we discussed last week?
-Bob: Yes, all screens have both light and dark mode variants. I'll share the Figma link after the meeting.
-Alice: Perfect. What about the backend API? David, any updates on that front?
-David: I've set up the basic structure and implemented the authentication endpoints. Still working on the data models for the content management system.
-Alice: When do you think that will be ready for testing?
-David: I should have it ready by next Friday. I'll need some test data to work with though.
-Charlie: I can help with generating test data. I'll prepare some JSON fixtures this week.
-Alice: Great! Let's also discuss the project timeline. We initially planned to launch in December, but we might need to push it to January.`;
-
-    // Forward the request to our summarizer route
-    const summarizerResponse = await axios.post('http://localhost:3001/api/summarize', 
-      { text: mockTranscript },
-      { headers: { 'Content-Type': 'application/json' } }
-    );
-    
-    res.json({
-      success: true,
-      summary: summarizerResponse.data
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message,
-      details: error.response?.data || "No additional details"
-    });
-  }
 });
 
 const mediaCodecs = [
