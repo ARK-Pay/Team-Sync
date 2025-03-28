@@ -1,0 +1,10 @@
+RewriteEngine On
+
+# Redirect root to frontend if it's the root path
+RewriteRule ^$ /frontend/gsap-react-landing/index.html [L]
+
+# Handle frontend static assets
+RewriteCond %{REQUEST_URI} !^/frontend/
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ /index.html [L,QSA] 
