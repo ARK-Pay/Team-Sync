@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { GlobalStyles } from '../../styles/GlobalStyles';
 import styled from 'styled-components';
 import gsap from 'gsap';
@@ -12,6 +12,9 @@ import CustomCursor from '../../components/animations/CustomCursor';
 import Preloader from '../../components/animations/Preloader';
 import SideMenu from '../../components/SideMenu';
 import TextParallax from '../../components/animations/TextParallax';
+import SignIn from '../../components/SignIn';
+import SignUp from '../../components/SignUp';
+import Navbar from './components/Navbar';
 
 // Register GSAP plugins
 gsap.registerPlugin(ScrollTrigger);
@@ -38,6 +41,8 @@ function Home() {
   const mainRef = useRef(null);
   const cursorRef = useRef(null);
   const preloaderRef = useRef(null);
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [signUpOpen, setSignUpOpen] = useState(false);
 
   useEffect(() => {
     // Initialize GSAP smooth scrolling
@@ -151,9 +156,10 @@ function Home() {
       <GlobalStyles />
       <CustomCursor ref={cursorRef} />
       <Preloader ref={preloaderRef} />
+      <Navbar setSignInOpen={setSignInOpen} />
       <SideMenu />
       <MainContent ref={mainRef}>
-        <Hero />
+        <Hero setSignInOpen={setSignInOpen} />
         <TextParallax phrases={['Team', 'Sync', 'Growth']} />
         <SectionOverlay>
           <About />
@@ -168,6 +174,9 @@ function Home() {
         </SectionOverlay>
         <Footer />
       </MainContent>
+      
+      {signInOpen && <SignIn setSignInOpen={setSignInOpen} setSignUpOpen={setSignUpOpen} />}
+      {signUpOpen && <SignUp setSignInOpen={setSignInOpen} setSignUpOpen={setSignUpOpen} />}
     </AppContainer>
   );
 }

@@ -10,7 +10,6 @@ Team Sync is built to revolutionize team collaboration. With a user-friendly int
 
 - User Authentication: Secure user registration and login system.
 - Project Management: Create, update, and delete projects.
-- Task Management: Create, update, and delete tasks within each project.
 - User Management: Invite team members to collaborate on projects.
 - Real-time Updates: Utilizes WebSockets for real-time project and task updates.
 - Dashboard: A user-friendly dashboard to manage your projects and tasks.
@@ -134,3 +133,5 @@ Please ensure that your code follows the coding standards and includes relevant 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Happy Project Management with Team Sync! 🚀🔧📊
+
+## Authentication Flow

@@ -102,32 +102,26 @@ const Navbar = ({ setSignInOpen }) => {
         {/* Center Menu - Hidden on Mobile */}
         <ul className="hidden md:flex items-center gap-10 list-none mx-auto">
           <li className="group relative">
-            <a href="#features" onClick={handleMenuItemClick} className="neon-text font-extrabold cursor-pointer transition-colors duration-300 group-hover:text-[#306EE8]">
-              Features
+            <a href="#home" onClick={handleMenuItemClick} className="neon-text font-extrabold cursor-pointer transition-colors duration-300 group-hover:text-[#306EE8]">
+              Home
             </a>
             <span className="absolute bottom-[-6px] left-1/2 w-0 h-[2px] bg-[#306EE8] group-hover:w-full transition-all duration-300 ease-in-out origin-center group-hover:left-0"></span>
           </li>
           <li className="group relative">
-            <a href="#benefits" onClick={handleMenuItemClick} className="neon-text font-extrabold cursor-pointer transition-colors duration-300 group-hover:text-[#0056b3]">
-              Benefits
-            </a>
-            <span className="absolute bottom-[-6px] left-1/2 w-0 h-[2px] bg-[#0056b3] group-hover:w-full transition-all duration-300 ease-in-out origin-center group-hover:left-0"></span>
-          </li>
-          <li className="group relative">
-            <a href="#testi" onClick={handleMenuItemClick} className="neon-text font-extrabold cursor-pointer transition-colors duration-300 group-hover:text-[#0056b3]">
-              Testimonials
-            </a>
-            <span className="absolute bottom-[-6px] left-1/2 w-0 h-[2px] bg-[#0056b3] group-hover:w-full transition-all duration-300 ease-in-out origin-center group-hover:left-0"></span>
-          </li>
-          <li className="group relative">
-            <a href="#faq" onClick={handleMenuItemClick} className="neon-text font-extrabold cursor-pointer transition-colors duration-300 group-hover:text-[#0056b3]">
-              FAQs
-            </a>
-            <span className="absolute bottom-[-6px] left-1/2 w-0 h-[2px] bg-[#0056b3] group-hover:w-full transition-all duration-300 ease-in-out origin-center group-hover:left-0"></span>
-          </li>
-          <li className="group relative">
             <a href="#about" onClick={handleMenuItemClick} className="neon-text font-extrabold cursor-pointer transition-colors duration-300 group-hover:text-[#0056b3]">
               About Us
+            </a>
+            <span className="absolute bottom-[-6px] left-1/2 w-0 h-[2px] bg-[#0056b3] group-hover:w-full transition-all duration-300 ease-in-out origin-center group-hover:left-0"></span>
+          </li>
+          <li className="group relative">
+            <a href="#services" onClick={handleMenuItemClick} className="neon-text font-extrabold cursor-pointer transition-colors duration-300 group-hover:text-[#0056b3]">
+              Services
+            </a>
+            <span className="absolute bottom-[-6px] left-1/2 w-0 h-[2px] bg-[#0056b3] group-hover:w-full transition-all duration-300 ease-in-out origin-center group-hover:left-0"></span>
+          </li>
+          <li className="group relative">
+            <a href="#contact" onClick={handleMenuItemClick} className="neon-text font-extrabold cursor-pointer transition-colors duration-300 group-hover:text-[#0056b3]">
+              Contact Us
             </a>
             <span className="absolute bottom-[-6px] left-1/2 w-0 h-[2px] bg-[#0056b3] group-hover:w-full transition-all duration-300 ease-in-out origin-center group-hover:left-0"></span>
           </li>
@@ -191,38 +185,11 @@ const Navbar = ({ setSignInOpen }) => {
           <ul className="absolute right-[30px] top-[20px] bg-white p-5 rounded-lg shadow-lg w-[300px] z-50 transition-all duration-300">
             <li className="group relative mt-1 flex items-center justify-center h-12">
               <a
-                href="#features"
+                href="#home"
                 onClick={handleMenuItemClick}
                 className="font-extrabold text-xl text-[#0066cc] hover:text-[#003366]"
               >
-                Features
-              </a>
-            </li>
-            <li className="group relative mt-1 flex items-center justify-center h-12">
-              <a
-                href="#benefits"
-                onClick={handleMenuItemClick}
-                className="font-extrabold text-xl text-[#0066cc] hover:text-[#003366]"
-              >
-                Benefits
-              </a>
-            </li>
-            <li className="group relative mt-1 flex items-center justify-center h-12">
-              <a
-                href="#testi"
-                onClick={handleMenuItemClick}
-                className="font-extrabold text-xl text-[#0066cc] hover:text-[#003366]"
-              >
-                Testimonials
-              </a>
-            </li>
-            <li className="group relative mt-1 flex items-center justify-center h-12">
-              <a
-                href="#faq"
-                onClick={handleMenuItemClick}
-                className="font-extrabold text-xl text-[#0066cc] hover:text-[#003366]"
-              >
-                FAQs
+                Home
               </a>
             </li>
             <li className="group relative mt-1 flex items-center justify-center h-12">
@@ -232,6 +199,24 @@ const Navbar = ({ setSignInOpen }) => {
                 className="font-extrabold text-xl text-[#0066cc] hover:text-[#003366]"
               >
                 About Us
+              </a>
+            </li>
+            <li className="group relative mt-1 flex items-center justify-center h-12">
+              <a
+                href="#services"
+                onClick={handleMenuItemClick}
+                className="font-extrabold text-xl text-[#0066cc] hover:text-[#003366]"
+              >
+                Services
+              </a>
+            </li>
+            <li className="group relative mt-1 flex items-center justify-center h-12">
+              <a
+                href="#contact"
+                onClick={handleMenuItemClick}
+                className="font-extrabold text-xl text-[#0066cc] hover:text-[#003366]"
+              >
+                Contact Us
               </a>
             </li>
           </ul>

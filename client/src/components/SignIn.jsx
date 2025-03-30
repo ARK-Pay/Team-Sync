@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useDispatch } from "react-redux";
 import validator from "validator";
-import axios from "axios";
 import {
   CloseRounded,
   EmailRounded,
@@ -24,6 +23,8 @@ import {
   userNameState,
 } from "../store/atoms/authAtoms";
 import { jwtDecode } from "jwt-decode";
+import { signIn, adminSignIn } from "../api/index"; // Import API functions
+import { useAuth } from '../context/AuthContext'; // Import the useAuth hook
 
 /**
  * SignIn component handles user authentication and login functionality.
@@ -36,6 +37,7 @@ const SignIn = ({ setSignInOpen, setSignUpOpen }) => {
   const setIsAdminRecoil = useSetRecoilState(isAdminState); // Recoil state for admin status
   const setUserIdRecoil = useSetRecoilState(userIdState); // Recoil state for user ID
   const setNameRecoil = useSetRecoilState(userNameState); // Recoil state for user name
+  const { login } = useAuth(); // Auth context login function
 
   const [email, setEmail] = useState(""); // Local state for email input
   const [password, setPassword] = useState(""); // Local state for password input
@@ -80,7 +82,7 @@ const SignIn = ({ setSignInOpen, setSignUpOpen }) => {
         })
       );
     }
-  }, [otpVerified, needsOTPVerification, apiResponse]);
+  }, [otpVerified, needsOTPVerification, apiResponse, dispatch, setSignInOpen]);
 
   /**
    * handleLogin function manages the login process, including API calls and state updates.
@@ -99,47 +101,53 @@ const SignIn = ({ setSignInOpen, setSignUpOpen }) => {
       setcredentialError(""); // Clear credential error
 
       try {
-        const res = await axios.post(
-          `${
-            isAdmin
-              ? "http://localhost:3001/admin/signin"
-              : "http://localhost:3001/user/signin"
-          }`,
-          { email, password } // Send email and password to API
-        );
+        // Use the API functions from api/index.js
+        const res = await (isAdmin ? adminSignIn : signIn)({ email, password });
 
         setApiResponse(res); // Store API response
 
         switch (res.status) {
           case 200:
-            localStorage.setItem("token", res.data.token); // Store token in local storage
             const decoded = jwtDecode(res.data.token); // Decode JWT token
 
-            setEmailRecoil(decoded.email); // Update Recoil state with email
-            setIsAdminRecoil(!!decoded.admin_id); // Update Recoil state with admin status
-            setUserIdRecoil(decoded.admin_id || decoded.user_id); // Update Recoil state with user ID
-            setNameRecoil(res.data.name); // Update Recoil state with user name
-            localStorage.setItem("userName", res.data.name); // Store user name in local storage
-            localStorage.setItem("userEmail", decoded.email); // Store user email in local storage
-            localStorage.setItem("isAdmin", !!decoded.admin_id); // Store admin status in local storage
-            localStorage.setItem("userId", decoded.admin_id || decoded.user_id); // Store user ID in local storage
-            localStorage.setItem("userJoindate", res.data.joined_at); // Store join date in local storage
+            // Create userData object for Auth context
+            const userData = {
+              email: decoded.email,
+              name: res.data.name,
+              isAdmin: !!decoded.admin_id,
+              userId: decoded.admin_id || decoded.user_id
+            };
+
+            // Use AuthContext login method
+            login(userData, res.data.token);
+
+            // Update recoil state
+            setEmailRecoil(decoded.email);
+            setIsAdminRecoil(!!decoded.admin_id);
+            setUserIdRecoil(decoded.admin_id || decoded.user_id);
+            setNameRecoil(res.data.name);
+            
+            // Store user data in localStorage
+            localStorage.setItem("userName", res.data.name);
+            localStorage.setItem("userEmail", decoded.email);
+            localStorage.setItem("isAdmin", !!decoded.admin_id);
+            localStorage.setItem("userId", decoded.admin_id || decoded.user_id);
+            localStorage.setItem("userJoindate", res.data.joined_at);
+            
             dispatch(loginSuccess(res.data)); // Dispatch success action with user data
             setIsLoggedIn(true); // Update login status
             setSignInOpen(false); // Close sign-in modal
+            
             dispatch(
               openSnackbar({
                 message: "Logged In Successfully", // Show success message
                 severity: "success",
               })
             );
+            
+            // Redirect to appropriate dashboard
             setTimeout(() => {
-              console.log(isAdmin);
-              if (!isAdmin) {
-                navigate("/dashboard/user"); // Navigate to user dashboard
-              } else {
-                navigate("/dashboard/admin"); // Navigate to admin dashboard
-              }
+              navigate(isAdmin ? "/dashboard/admin" : "/dashboard/user");
             }, 100);
             break;
 
@@ -148,7 +156,7 @@ const SignIn = ({ setSignInOpen, setSignUpOpen }) => {
             dispatch(loginFailure()); // Dispatch failure action
             setcredentialError(
               "Your account has been blocked. Please contact support."
-            ); // Set error message
+            );
             dispatch(
               openSnackbar({
                 message: "Account blocked", // Show error message
@@ -184,35 +192,36 @@ const SignIn = ({ setSignInOpen, setSignUpOpen }) => {
             setcredentialError(`Unexpected Error: ${res.data}`); // Set unexpected error message
         }
       } catch (err) {
-        console.log(err); // Log error
+        console.error("Login error:", err); // Better error logging
+        
         if (err.response) {
           switch (err.response.status) {
             case 400:
-              setcredentialError("Invalid credentials"); // Set invalid credentials error
+              setcredentialError(err.response.data.errors?.[0] || "Invalid credentials");
               break;
             case 401:
-              setUserBlocked(true); // Set user block status
+              setUserBlocked(true);
               setcredentialError(
                 "Your account has been blocked. Please contact support."
-              ); // Set error message
+              );
               break;
             case 402:
-              setNeedsOTPVerification(true); // Set OTP requirement
-              setShowOTP(true); // Show OTP component
+              setNeedsOTPVerification(true);
+              setShowOTP(true);
               break;
             default:
               setcredentialError(
-                err.response.data.errors[0] || "An error occurred"
-              ); // Set general error message
+                err.response.data.errors?.[0] || "An error occurred"
+              );
           }
         } else {
-          setcredentialError("Network error. Please try again."); // Set network error message
+          setcredentialError("Network error. Please try again.");
         }
 
-        dispatch(loginFailure()); // Dispatch failure action
+        dispatch(loginFailure());
         dispatch(
           openSnackbar({
-            message: credentialError, // Show error message
+            message: err.response?.data?.errors?.[0] || "Login failed",
             severity: "error",
           })
         );
@@ -220,9 +229,7 @@ const SignIn = ({ setSignInOpen, setSignUpOpen }) => {
         setLoading(false); // Reset loading state
         setDisabled(false); // Enable button
       }
-    }
-
-    if (email === "" || password === "") {
+    } else if (email === "" || password === "") {
       dispatch(
         openSnackbar({
           message: "Please fill all the fields", // Show error message for empty fields
@@ -237,9 +244,9 @@ const SignIn = ({ setSignInOpen, setSignUpOpen }) => {
    */
   const validateEmail = () => {
     if (validator.isEmail(email)) {
-      setEmailError(""); // Clear email error if valid
+      setEmailError("");
     } else {
-      setEmailError("Enter a valid Email Id!"); // Set email error if invalid
+      setEmailError("Enter a valid Email Id!");
     }
   };
 
