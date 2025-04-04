@@ -12,6 +12,7 @@ const AddAssigneesModal = ({ isOpen, onClose, taskId, onSuccess }) => {
   // Fetch users when the modal is opened or taskId changes
   useEffect(() => {
     if (isOpen) {
+      console.log('AddAssigneesModal opened with taskId:', taskId);
       fetchUsers();
     }
   }, [isOpen, taskId]);
@@ -21,32 +22,92 @@ const AddAssigneesModal = ({ isOpen, onClose, taskId, onSuccess }) => {
     try {
       setIsLoading(true);
       const token = localStorage.getItem('token');
-      const pid=localStorage.getItem('project_id');
-      // Fetch all available users
-      const allUsersResponse = await axios.get(`http://localhost:3001/project/get-all-users/${pid}`, {
+      const pid = localStorage.getItem('project_id');
+      
+      console.log('Fetching users for task assignment. Task ID:', taskId);
+      console.log('Project ID from localStorage:', pid);
+      
+      // Try to fetch all users if project-specific endpoint fails
+      try {
+        // First attempt: Try to get project users
+        console.log(`Attempting to fetch project users: http://localhost:3001/project/get-all-users/${pid}`);
+        
+        const allUsersResponse = await axios.get(`http://localhost:3001/project/get-all-users/${pid}`, {
+          headers: { authorization: token }
+        });
+        
+        console.log('Project users response:', allUsersResponse.data);
+        
+        if (allUsersResponse.data && allUsersResponse.data.length > 0) {
+          processUsers(allUsersResponse.data);
+        } else {
+          // If no project users, fall back to getting all users
+          fetchAllUsers();
+        }
+      } catch (error) {
+        console.error('Error fetching project users:', error);
+        // Fall back to getting all users
+        fetchAllUsers();
+      }
+    } catch (error) {
+      console.error('Error in fetchUsers:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Fallback function to fetch all users in the system
+  const fetchAllUsers = async () => {
+    try {
+      console.log('Falling back to fetching all users');
+      const token = localStorage.getItem('token');
+      
+      const allUsersResponse = await axios.get('http://localhost:3001/admin/all-users', {
         headers: { authorization: token }
       });
-
+      
+      console.log('All users response:', allUsersResponse.data);
+      processUsers(allUsersResponse.data);
+    } catch (error) {
+      console.error('Error fetching all users:', error);
+    }
+  };
+  
+  // Process users and handle already assigned users
+  const processUsers = async (allUsers) => {
+    try {
+      const token = localStorage.getItem('token');
+      
       // Fetch users already assigned to the task
+      console.log(`Fetching assigned users: http://localhost:3001/task/${taskId}/assigned-users`);
+      
       const assignedUsersResponse = await axios.get(`http://localhost:3001/task/${taskId}/assigned-users`, {
         headers: { authorization: token }
       });
+      
+      console.log('Assigned users response:', assignedUsersResponse.data);
 
       // Create a set of assigned user IDs for efficient lookup
       const assignedUserIds = new Set(assignedUsersResponse.data.map(user => user.id));
 
       // Mark users as disabled if they're already assigned
-      const processedUsers = allUsersResponse.data.map(user => ({
+      const processedUsers = allUsers.map(user => ({
         ...user,
         isDisabled: assignedUserIds.has(user.id)
       }));
 
+      console.log('Processed users:', processedUsers);
       setUsers(processedUsers);
       setFilteredUsers(processedUsers);
     } catch (error) {
-      console.error('Error fetching users:', error);
-    } finally {
-      setIsLoading(false);
+      console.error('Error processing users:', error);
+      // Still set the users even if getting assigned users fails
+      const processedUsers = allUsers.map(user => ({
+        ...user,
+        isDisabled: false
+      }));
+      setUsers(processedUsers);
+      setFilteredUsers(processedUsers);
     }
   };
 
@@ -64,25 +125,139 @@ const AddAssigneesModal = ({ isOpen, onClose, taskId, onSuccess }) => {
 
   // Handle submit action to add selected users to the task
   const handleSubmit = async () => {
+    if (selectedUsers.length === 0) {
+      return; // Don't do anything if no users are selected
+    }
+    
     try {
       setIsLoading(true);
       const token = localStorage.getItem('token');
       
-      await axios.post(
-        `http://localhost:3001/task/${taskId}/add-assignee`,
-        {
-          assignee_ids: selectedUsers.map(user => user.id)
-        },
-        {
-          headers: { authorization: token }
+      console.log('Adding assignees to task:', taskId);
+      console.log('Selected users:', selectedUsers);
+      
+      // Ensure we have valid user IDs
+      const validUserIds = selectedUsers
+        .filter(user => user.id || user._id)
+        .map(user => user.id || user._id);
+      
+      if (validUserIds.length === 0) {
+        console.error('No valid user IDs found in selected users');
+        alert('Error: Selected users do not have valid IDs');
+        return;
+      }
+      
+      console.log('Valid assignee IDs:', validUserIds);
+      
+      // Try different task ID formats to find the one that works
+      // MongoDB typically uses _id field
+      const possibleTaskIds = [
+        taskId,                                  // Original ID
+        taskId.toString(),                       // String version
+        taskId.replace(/"/g, ''),                // Remove quotes
+        taskId.replace(/ObjectId\((.*?)\)/, '$1') // Extract from ObjectId wrapper
+      ];
+      
+      console.log('Trying these task IDs:', possibleTaskIds);
+      
+      let success = false;
+      let lastError = null;
+      
+      // Try each possible task ID format
+      for (const tid of possibleTaskIds) {
+        if (success) break;
+        
+        try {
+          console.log(`Trying with task ID: ${tid}`);
+          const response = await axios.post(
+            `http://localhost:3001/task/${tid}/add-assignee`,
+            {
+              assignee_ids: validUserIds
+            },
+            {
+              headers: { authorization: token }
+            }
+          );
+          
+          console.log('Add assignee response:', response.data);
+          success = true;
+          
+          // Show success message
+          alert('Assignees added successfully!');
+          
+          // Call the success callback if provided
+          if (typeof onSuccess === 'function') {
+            onSuccess();
+          }
+          
+          // Close the modal and reset state
+          onClose();
+          setSelectedUsers([]);
+          return;
+        } catch (error) {
+          console.error(`Failed with task ID ${tid}:`, error);
+          lastError = error;
         }
-      );
-
-      onSuccess?.();
-      onClose();
-      setSelectedUsers([]);
+      }
+      
+      // If we get here, none of the task IDs worked
+      // Try creating a custom endpoint that doesn't rely on the task ID in the URL
+      try {
+        console.log('Trying custom endpoint approach...');
+        const response = await axios.post(
+          `http://localhost:3001/task/assign`,
+          {
+            task_id: taskId,
+            assignee_ids: validUserIds
+          },
+          {
+            headers: { authorization: token }
+          }
+        );
+        
+        console.log('Custom endpoint response:', response.data);
+        
+        // Show success message
+        alert('Assignees added successfully!');
+        
+        // Call the success callback if provided
+        if (typeof onSuccess === 'function') {
+          onSuccess();
+        }
+        
+        // Close the modal and reset state
+        onClose();
+        setSelectedUsers([]);
+        return;
+      } catch (customError) {
+        console.error('Custom endpoint also failed:', customError);
+        lastError = lastError || customError;
+      }
+      
+      // If we reach here, all attempts failed
+      throw lastError || new Error('All task ID formats failed');
     } catch (error) {
       console.error('Error adding assignees:', error);
+      
+      // More detailed error message
+      let errorMessage = 'Failed to add assignees';
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        errorMessage += `: ${error.response.status} - ${error.response.data.message || error.response.statusText}`;
+        console.log('Error response data:', error.response.data);
+        console.log('Error response status:', error.response.status);
+        console.log('Error response headers:', error.response.headers);
+      } else if (error.request) {
+        // The request was made but no response was received
+        errorMessage += ': No response received from server';
+        console.log('Error request:', error.request);
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        errorMessage += `: ${error.message}`;
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsLoading(false);
     }

@@ -326,24 +326,112 @@ const MyTasksTable = ({ type = 'assigned' }) => {
     }
   }, [deleteModal.taskId]);
 // Function to fetch tasks from the server
-  const fetchTasks = async () => {
+  const fetchAssignedTasks = async () => {
     try {
       const userId = localStorage.getItem('userId');
       const token = localStorage.getItem('token');
       const userEmail = localStorage.getItem('userEmail');
       
-      let response;
-      if (type === 'assigned') {
-        response = await axios.get(
-          `http://localhost:3001/task/user/${userId}/assigned-tasks`,
-          {
-            headers: {
-              'authorization': token,
-            }
+      console.log('Fetching assigned tasks for user:', { userId, userEmail });
+      
+      // Try multiple endpoints to ensure we get the assigned tasks
+      let response = null;
+      let error = null;
+      
+      // First try with userId
+      if (userId) {
+        try {
+          console.log(`Trying endpoint: http://localhost:3001/task/user/${userId}/assigned-tasks`);
+          const resp = await axios.get(
+            `http://localhost:3001/task/user/${userId}/assigned-tasks`,
+            { headers: { 'authorization': token } }
+          );
+          
+          if (resp.data && resp.data.length > 0) {
+            console.log(`Found ${resp.data.length} assigned tasks using userId`);
+            response = resp;
+          } else {
+            console.log('No tasks found using userId endpoint');
           }
-        );
+        } catch (err) {
+          console.error('Error with userId endpoint:', err);
+          error = err;
+        }
+      }
+      
+      // If userId approach failed, try with email
+      if (!response && userEmail) {
+        try {
+          console.log(`Trying endpoint: http://localhost:3001/task/user/${userEmail}/assigned-tasks`);
+          const resp = await axios.get(
+            `http://localhost:3001/task/user/${userEmail}/assigned-tasks`,
+            { headers: { 'authorization': token } }
+          );
+          
+          if (resp.data && resp.data.length > 0) {
+            console.log(`Found ${resp.data.length} assigned tasks using userEmail`);
+            response = resp;
+          } else {
+            console.log('No tasks found using userEmail endpoint');
+          }
+        } catch (err) {
+          console.error('Error with userEmail endpoint:', err);
+          if (!error) error = err;
+        }
+      }
+      
+      // If both approaches failed, try a generic endpoint
+      if (!response) {
+        try {
+          console.log('Trying generic assigned tasks endpoint');
+          const resp = await axios.get(
+            `http://localhost:3001/task/assigned-tasks`,
+            { headers: { 'authorization': token } }
+          );
+          
+          if (resp.data && resp.data.length > 0) {
+            console.log(`Found ${resp.data.length} assigned tasks using generic endpoint`);
+            response = resp;
+          } else {
+            console.log('No tasks found using generic endpoint');
+          }
+        } catch (err) {
+          console.error('Error with generic endpoint:', err);
+          if (!error) error = err;
+        }
+      }
+      
+      // If we have a response, process it
+      if (response) {
+        return response.data;
       } else {
-        response = await axios.get(
+        // If all approaches failed, throw the error
+        if (error) throw error;
+        return [];
+      }
+    } catch (error) {
+      console.error('Failed to fetch assigned tasks:', error);
+      showToast("Failed to fetch assigned tasks. Please try again later.", "error");
+      return [];
+    }
+  };
+
+  const fetchTasks = async () => {
+    try {
+      setLoading(true);
+      const userId = localStorage.getItem('userId');
+      const token = localStorage.getItem('token');
+      const userEmail = localStorage.getItem('userEmail');
+      
+      console.log(`Fetching ${type} tasks for user:`, { userId, userEmail });
+      
+      let taskData = [];
+      
+      if (type === 'assigned') {
+        taskData = await fetchAssignedTasks();
+      } else {
+        // For created tasks, use the existing approach
+        const response = await axios.get(
           `http://localhost:3001/task/user/${userEmail}/created-tasks`,
           {
             headers: {
@@ -351,28 +439,39 @@ const MyTasksTable = ({ type = 'assigned' }) => {
             }
           }
         );
+        taskData = response.data;
       }
       
       // Sort tasks by project, priority, and deadline
-      const sortedTasks = response.data.sort((a, b) => {
+      const sortedTasks = taskData.sort((a, b) => {
         // First sort by project_id
-        const projectCompare = a.project_id.localeCompare(b.project_id);
-        if (projectCompare !== 0) return projectCompare;
+        if (a.project_id && b.project_id) {
+          const projectCompare = a.project_id.localeCompare(b.project_id);
+          if (projectCompare !== 0) return projectCompare;
+        }
         
         // Then sort by priority (high to low)
-        const priorityCompare = b.priority.localeCompare(a.priority);
-        if (priorityCompare !== 0) return priorityCompare;
+        if (a.priority && b.priority) {
+          const priorityCompare = b.priority.localeCompare(a.priority);
+          if (priorityCompare !== 0) return priorityCompare;
+        }
         
         // Finally sort by deadline
-        return new Date(a.deadline) - new Date(b.deadline);
+        if (a.deadline && b.deadline) {
+          return new Date(a.deadline) - new Date(b.deadline);
+        }
+        
+        return 0;
       });
 
+      console.log(`Found ${sortedTasks.length} ${type} tasks after sorting`);
       setTasks(sortedTasks);
       setFilteredTasks(sortedTasks);
-      setLoading(false);
     } catch (error) {
+      console.error(`Error fetching ${type} tasks:`, error);
+      showToast(`Failed to fetch ${type} tasks`, "error");
+    } finally {
       setLoading(false);
-      showToast("Failed to fetch tasks", "error");
     }
   };
   const handleEditClick = (task) => {
@@ -492,7 +591,7 @@ const MyTasksTable = ({ type = 'assigned' }) => {
   }, {});
 
   return (
-    <div className="py-6 max-w-[1200px] mx-auto">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
       {toast && (
         <Toast
           message={toast.message}
@@ -500,18 +599,21 @@ const MyTasksTable = ({ type = 'assigned' }) => {
           onClose={() => setToast(null)}
         />
       )}
-       <EditModal
+      
+      <EditModal
         isOpen={editModal.isOpen}
         onClose={() => setEditModal({ isOpen: false, task: null })}
         task={editModal.task}
         onSave={handleEditSave}
       />
+      
       <DeleteModal
         isOpen={deleteModal.isOpen}
         onClose={() => setDeleteModal({ isOpen: false, taskId: null, taskTitle: '' })}
         onConfirm={handleDeleteConfirm}
         taskTitle={deleteModal.taskTitle}
       />
+      
       <AddAssigneesModal
         isOpen={assigneesModal.isOpen}
         onClose={() => setAssigneesModal({ isOpen: false, taskId: null })}
@@ -519,125 +621,364 @@ const MyTasksTable = ({ type = 'assigned' }) => {
         onSuccess={fetchTasks}
       />
 
-      <form onSubmit={handleSearch} className="flex justify-between items-center mb-8">
-        <div className="hidden lg:block font-medium text-lg">{type === 'assigned' ? 'Tasks assigned to you' : 'Tasks created by you'}</div>
-        <div className="flex gap-4">
-          <input
-            type="text"
-            placeholder="Search tasks..."
-            className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <button type="submit" className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-200 hover:shadow-lg transition duration-300">
-            <Filter className="h-4 w-4" />
-            <span>Search</span>
-          </button>
-        </div>
-      </form>
-
-      <div className="space-y-6">
-        {Object.entries(tasksByProject).map(([projectId, projectTasks]) => (
-          <div key={projectId} className="border rounded-lg overflow-hidden">
-            <div
-              className="bg-gray-50 p-4 flex items-center justify-between cursor-pointer"
-              onClick={() => toggleProject(projectId)}
+      {/* Header and Controls */}
+      <div className="p-6 border-b border-gray-200">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">{type === 'assigned' ? 'Tasks Assigned to You' : 'Tasks Created by You'}</h1>
+            <p className="text-gray-500 mt-1">
+              {filteredTasks.length} {filteredTasks.length === 1 ? 'task' : 'tasks'} • Last updated: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            {type === 'created' && (
+              <button 
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                onClick={() => setEditModal({ isOpen: true, task: { status: '0', priority: '1' } })}
+              >
+                <PlusCircle className="h-4 w-4 mr-2" />
+                <span>New Task</span>
+              </button>
+            )}
+            
+            <button 
+              className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+              onClick={fetchTasks}
             >
-              <div className="flex items-center gap-2">
-                {expandedProjects.has(projectId) ? (
-                  <ChevronDown className="h-5 w-5" />
-                ) : (
-                  <ChevronRight className="h-5 w-5" />
-                )}
-                <h3 className="font-medium">{projectTasks[0].project_name}</h3>
-                <span className="text-sm text-gray-500">({projectTasks.length} tasks)</span>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+        
+        {/* Task Analytics */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+            <p className="text-sm font-medium text-blue-600 mb-1">Total Tasks</p>
+            <div className="flex items-center justify-between">
+              <p className="text-2xl font-bold text-gray-800">{filteredTasks.length}</p>
+              <div className="p-2 bg-blue-100 rounded-md text-blue-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
               </div>
             </div>
-
-            {expandedProjects.has(projectId) && (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b bg-gray-100">
-                      <th className="text-left py-4 px-6 font-medium text-xs">Task</th>
-                      <th className="text-left py-4 px-6 font-medium text-xs">Description</th>
-                      <th className="text-left py-4 px-6 font-medium text-xs">Status</th>
-                      <th className="text-left py-4 px-6 font-medium text-xs">Priority</th>
-                      <th className="text-left py-4 px-6 font-medium text-xs">Created</th>
-                      <th className="text-left py-4 px-6 font-medium text-xs">Deadline</th>
-                      <th className="w-10"></th>
-                      <th className="w-10"></th>
-                      <th className="w-10"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projectTasks.map((task) => (
-                      <tr key={task._id} className="border-b last:border-b-0 hover:bg-gray-50">
-                        <td className="py-4 px-6">
-                          <div className="flex flex-col">
-                            <span className="font-medium text-sm">{task.title}</span>
-                            <span className="text-xs text-gray-500">{task.creator_id}</span>
-                          </div>
-                        </td>
-                        <td className="py-4 px-6">
-                          <div className="max-w-[200px] truncate text-sm" title={task.description}>
-                            {task.description}
-                          </div>
-                        </td>
-                        <td className="py-4 px-6">
-                          <span className={`inline-flex justify-center items-center px-2 py-1 rounded-full text-xs ${getStatusStyle(task.status)} truncate max-w-[100px]`}>
-                            {getStatusText(task.status)}
-                          </span>
-                        </td>
-                        <td className="py-4 px-6">
-                          <span className={`inline-flex justify-center items-center px-2 py-1 rounded-full text-xs ${getPriorityStyle(task.priority)}`}>
-                            {getPriorityText(task.priority)}
-                          </span>
-                        </td>
-                        <td className="py-4 px-6">
-                          <div className="text-xs text-gray-500">{formatDate(task.created_at)}</div>
-                        </td>
-                        <td className="py-4 px-6">
-                          <div className="text-xs text-gray-500">{formatDate(task.deadline)}</div>
-                        </td>
-                        <td className="py-4 px-2">
-                          <button 
-                            onClick={() => handleDeleteClick(task.id, task.title, task.project_id)}
-                            className="p-1 hover:bg-red-100 rounded text-red-600 transition-colors duration-200"
-                            title="Delete task"
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </button>
-                        </td>
-                        <td className="px-2 py-4 border-b border-gray-200">
-                          <div className="flex items-center space-x-2">
-                            <button 
-                              onClick={() => handleEditClick(task)} 
-                              className="text-blue-500 hover:text-blue-700"
-                              title="Edit task"
-                            >
-                              <Edit3 className="h-5 w-5" />
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-2 py-4 border-b border-gray-200">
-                          <div className="flex items-center space-x-2">
-                            <button 
-                                onClick={() => handleAddAssigneesClick(task.id)} 
-                                className="text-blue-500 hover:text-blue-700" title='Add assignees'
-                              >
-                                <PlusCircle className="h-5 w-5" />
-                              </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          </div>
+          
+          <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+            <p className="text-sm font-medium text-green-600 mb-1">Completed</p>
+            <div className="flex items-center justify-between">
+              <p className="text-2xl font-bold text-gray-800">
+                {filteredTasks.filter(task => task.status === '2' || task.status === 2).length}
+              </p>
+              <div className="p-2 bg-green-100 rounded-md text-green-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
               </div>
+            </div>
+          </div>
+          
+          <div className="bg-amber-50 p-4 rounded-lg border border-amber-100">
+            <p className="text-sm font-medium text-amber-600 mb-1">In Progress</p>
+            <div className="flex items-center justify-between">
+              <p className="text-2xl font-bold text-gray-800">
+                {filteredTasks.filter(task => task.status === '1' || task.status === 1).length}
+              </p>
+              <div className="p-2 bg-amber-100 rounded-md text-amber-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-red-50 p-4 rounded-lg border border-red-100">
+            <p className="text-sm font-medium text-red-600 mb-1">To Do</p>
+            <div className="flex items-center justify-between">
+              <p className="text-2xl font-bold text-gray-800">
+                {filteredTasks.filter(task => task.status === '0' || task.status === 0).length}
+              </p>
+              <div className="p-2 bg-red-100 rounded-md text-red-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Progress Bar */}
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-sm font-medium text-gray-600">Overall Progress</p>
+            <p className="text-sm font-medium text-gray-600">
+              {filteredTasks.length > 0 
+                ? Math.round((filteredTasks.filter(task => task.status === '2' || task.status === 2).length / filteredTasks.length) * 100)
+                : 0}%
+            </p>
+          </div>
+          <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-blue-500 rounded-full" 
+              style={{ 
+                width: `${filteredTasks.length > 0 
+                  ? Math.round((filteredTasks.filter(task => task.status === '2' || task.status === 2).length / filteredTasks.length) * 100)
+                  : 0}%` 
+              }}
+            ></div>
+          </div>
+        </div>
+        
+        {/* Search and Filter Controls */}
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-grow">
+            <form onSubmit={handleSearch} className="relative">
+              <input
+                type="text"
+                placeholder="Search tasks by title or description..."
+                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </form>
+          </div>
+          
+          <div className="flex gap-2">
+            <select
+              className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => {
+                // Filter by status
+                const status = e.target.value;
+                if (status === 'all') {
+                  setFilteredTasks(tasks);
+                } else {
+                  setFilteredTasks(tasks.filter(task => task.status === status));
+                }
+              }}
+            >
+              <option value="all">All Statuses</option>
+              <option value="0">To Do</option>
+              <option value="1">In Progress</option>
+              <option value="2">Completed</option>
+            </select>
+            
+            <select
+              className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => {
+                // Filter by priority
+                const priority = e.target.value;
+                if (priority === 'all') {
+                  setFilteredTasks(tasks);
+                } else {
+                  setFilteredTasks(tasks.filter(task => task.priority === priority));
+                }
+              }}
+            >
+              <option value="all">All Priorities</option>
+              <option value="0">Low</option>
+              <option value="1">Medium</option>
+              <option value="2">High</option>
+            </select>
+            
+            <button 
+              type="submit" 
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+              onClick={handleSearch}
+            >
+              <Filter className="h-4 w-4" />
+              <span>Filter</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Task Content */}
+      <div className="p-6">
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          </div>
+        ) : filteredTasks.length === 0 ? (
+          <div className="bg-white rounded-lg p-12 text-center">
+            <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">No tasks found</h3>
+            <p className="text-gray-500 mb-6">
+              {type === 'assigned' 
+                ? "You don't have any assigned tasks yet." 
+                : "You haven't created any tasks yet."}
+            </p>
+            {type === 'created' && (
+              <button 
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300"
+                onClick={() => setEditModal({ isOpen: true, task: { status: '0', priority: '1' } })}
+              >
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Create your first task
+              </button>
             )}
           </div>
-        ))}
+        ) : (
+          <div className="space-y-6">
+            {Object.entries(tasksByProject).map(([projectId, projectTasks]) => (
+              <div key={projectId} className="bg-white border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                <div
+                  className="bg-gray-50 p-4 flex items-center justify-between cursor-pointer border-b border-gray-200"
+                  onClick={() => toggleProject(projectId)}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className={`p-2 rounded-md ${expandedProjects.has(projectId) ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
+                      {expandedProjects.has(projectId) ? (
+                        <ChevronDown className="h-5 w-5" />
+                      ) : (
+                        <ChevronRight className="h-5 w-5" />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-800">{projectTasks[0].project_name}</h3>
+                      <div className="flex items-center mt-1">
+                        <span className="text-sm text-gray-500">{projectTasks.length} {projectTasks.length === 1 ? 'task' : 'tasks'}</span>
+                        <span className="mx-2 text-gray-300">•</span>
+                        <span className="text-sm text-gray-500">
+                          {projectTasks.filter(t => t.status === '2' || t.status === 2).length} completed
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-full max-w-[100px] bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-green-500 rounded-full" 
+                        style={{ 
+                          width: `${Math.round((projectTasks.filter(t => t.status === '2' || t.status === 2).length / projectTasks.length) * 100)}%` 
+                        }}
+                      ></div>
+                    </div>
+                    <span className="text-sm text-gray-500">
+                      {Math.round((projectTasks.filter(t => t.status === '2' || t.status === 2).length / projectTasks.length) * 100)}%
+                    </span>
+                  </div>
+                </div>
+
+                {expandedProjects.has(projectId) && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b bg-gray-50">
+                          <th className="text-left py-3 px-6 font-medium text-xs text-gray-500 uppercase tracking-wider">Task</th>
+                          <th className="text-left py-3 px-6 font-medium text-xs text-gray-500 uppercase tracking-wider">Description</th>
+                          <th className="text-left py-3 px-6 font-medium text-xs text-gray-500 uppercase tracking-wider">Status</th>
+                          <th className="text-left py-3 px-6 font-medium text-xs text-gray-500 uppercase tracking-wider">Priority</th>
+                          <th className="text-left py-3 px-6 font-medium text-xs text-gray-500 uppercase tracking-wider">Created</th>
+                          <th className="text-left py-3 px-6 font-medium text-xs text-gray-500 uppercase tracking-wider">Deadline</th>
+                          <th className="w-10"></th>
+                          <th className="w-10"></th>
+                          <th className="w-10"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {projectTasks.map((task) => (
+                          <tr key={task._id} className="hover:bg-gray-50 transition-colors">
+                            <td className="py-4 px-6">
+                              <div className="flex flex-col">
+                                <span className="font-medium text-gray-800">{task.title}</span>
+                                <span className="text-xs text-gray-500 mt-1">{task.creator_id}</span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6">
+                              <div className="max-w-[200px] truncate text-sm text-gray-600" title={task.description}>
+                                {task.description || "No description provided"}
+                              </div>
+                            </td>
+                            <td className="py-4 px-6">
+                              <span className={`inline-flex justify-center items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusStyle(task.status)}`}>
+                                {getStatusText(task.status)}
+                              </span>
+                            </td>
+                            <td className="py-4 px-6">
+                              <span className={`inline-flex justify-center items-center px-3 py-1 rounded-full text-xs font-medium ${getPriorityStyle(task.priority)}`}>
+                                {getPriorityText(task.priority)}
+                              </span>
+                            </td>
+                            <td className="py-4 px-6">
+                              <div className="text-xs text-gray-500">{formatDate(task.created_at)}</div>
+                            </td>
+                            <td className="py-4 px-6">
+                              <div className="text-xs text-gray-500">
+                                {task.deadline ? formatDate(task.deadline) : "No deadline"}
+                              </div>
+                            </td>
+                            <td className="py-4 px-2">
+                              <button
+                                onClick={() => handleAddAssigneesClick(task._id)}
+                                className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                                title="Add Assignees"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                                </svg>
+                              </button>
+                            </td>
+                            <td className="py-4 px-2">
+                              <button
+                                onClick={() => handleEditClick(task)}
+                                className="p-1 text-amber-500 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors"
+                                title="Edit Task"
+                              >
+                                <Edit3 className="h-5 w-5" />
+                              </button>
+                            </td>
+                            <td className="py-4 px-2">
+                              <button
+                                onClick={() => handleDeleteClick(task._id, task.title, task.project_id)}
+                                className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                                title="Delete Task"
+                              >
+                                <Trash2 className="h-5 w-5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {/* Pagination */}
+        {filteredTasks.length > 0 && (
+          <div className="flex items-center justify-between mt-6">
+            <div className="text-sm text-gray-500">
+              Showing <span className="font-medium">{filteredTasks.length}</span> of <span className="font-medium">{tasks.length}</span> tasks
+            </div>
+            <div className="flex items-center space-x-2">
+              <button className="px-3 py-1 border rounded-md text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                Previous
+              </button>
+              <button className="px-3 py-1 border rounded-md text-sm bg-blue-50 text-blue-600 border-blue-200">
+                1
+              </button>
+              <button className="px-3 py-1 border rounded-md text-sm text-gray-600 hover:bg-gray-50">
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

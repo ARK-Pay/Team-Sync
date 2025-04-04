@@ -1,0 +1,220 @@
+@font-face {
+    font-family: Akira;
+    src: url(../assets/Akira-Expanded-Demo.otf);
+}
+
+/* Explore Button Styles */
+.explore {
+    width: fit-content;
+    position: relative;
+    z-index: 10;
+}
+
+.button--bestia {
+    position: relative;
+    font-family: Akira, sans-serif;
+    font-size: 1rem;
+    color: #fff;
+    background: none;
+    padding: 0;
+    border: none;
+    cursor: pointer;
+}
+
+.button--bestia .button__bg {
+    top: 0;
+    left: 0;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: #ffffff;
+    border-radius: 2rem;
+    overflow: hidden;
+    transition: transform 0.4s cubic-bezier(0.1, 0, 0.3, 1);
+}
+
+.button--bestia:hover .button__bg {
+    transform: scale3d(1.2, 1.2, 1);
+}
+
+.button--bestia .button__bg::before,
+.button--bestia .button__bg::after {
+    content: "";
+    position: absolute;
+    background: #000;
+}
+
+.button--bestia .button__bg::before {
+    width: 110%;
+    height: 0;
+    padding-bottom: 110%;
+    top: 50%;
+    left: 50%;
+    border-radius: 50%;
+    transform: translate3d(-50%, -50%, 0) scale3d(0, 0, 1);
+}
+
+.button--bestia:hover .button__bg::before {
+    transition: transform 0.4s cubic-bezier(0.1, 0, 0.3, 1);
+    transform: translate3d(-50%, -50%, 0) scale3d(1, 1, 1);
+}
+
+.button--bestia .button__bg::after {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.button--bestia:hover .button__bg::after {
+    opacity: 1;
+    transition-duration: 0.01s;
+    transition-delay: 0.3s;
+}
+
+.button--bestia span {
+    display: block;
+    position: relative;
+    padding: 1rem 2rem;
+    mix-blend-mode: difference;
+}
+
+/* Menu Background */
+.menu-bg {
+    width: 20px;
+    height: 20px;
+    background-color: #fff;
+    position: fixed;
+    right: 40px;
+    top: 20px;
+    margin: 0;
+    border-radius: 50%;
+    z-index: 5;
+}
+
+/* Navigation Panel */
+.nav-panel {
+    background-color: #fff;
+    width: 100%;
+    height: 100%;
+    z-index: 200;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    visibility: hidden;
+    overflow: hidden;
+}
+
+.nav-panel #circle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 110vh;
+    height: 110vh;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: solid #e5e5e5 1px;
+}
+
+.nav-panel .smcircle {
+    width: 8px;
+    height: 8px;
+    background-color: rgba(128, 128, 128, 0.3);
+    border-radius: 50%;
+    position: absolute;
+    right: -4px;
+    top: 50%;
+    transform: translate(0, -50%);
+}
+
+.nav-panel .stripe {
+    width: 100%;
+    position: absolute;
+    display: flex;
+    align-items: center;
+    transform-origin: center;
+    left: 0;
+}
+
+.nav-panel .st1 {
+    transform: rotate(-60deg);
+}
+
+.nav-panel .st2 {
+    transform: rotate(-30deg);
+}
+
+.nav-panel .st3 {
+    transform: rotate(0deg);
+}
+
+.nav-panel .st4 {
+    transform: rotate(30deg);
+}
+
+.nav-panel .st5 {
+    transform: rotate(60deg);
+}
+
+.nav-panel .first {
+    width: 30%;
+    height: 1px;
+    background-color: rgba(128, 128, 128, 0.3);
+    position: relative;
+    margin-left: 20%;
+}
+
+.nav-panel .sec {
+    padding-left: 15px;
+    width: 50%;
+    color: rgba(128, 128, 128, 0.15);
+    font-family: Akira, sans-serif;
+    white-space: nowrap;
+}
+
+.nav-panel .sec.active,
+.nav-panel .sec:hover {
+    color: #000;
+}
+
+.nav-panel .sec h4 {
+    font-size: 2vw;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin: 0;
+    color: inherit;
+}
+
+.nav-panel .sec h6 {
+    margin-top: 0.5vh;
+    font-size: 0.9vw;
+    font-weight: 400;
+    letter-spacing: 1px;
+    margin: 0;
+    text-transform: lowercase;
+    color: inherit;
+}
+
+/* Close button in top right */
+.nav-panel .close-button {
+    position: fixed;
+    top: 40px;
+    right: 40px;
+    font-family: Akira, sans-serif;
+    font-size: 1.5rem;
+    color: #000;
+    z-index: 300;
+    cursor: pointer;
+    letter-spacing: 2px;
+    transition: transform 0.3s ease;
+}
+
+.nav-panel .close-button:hover {
+    transform: scale(1.1);
+} 

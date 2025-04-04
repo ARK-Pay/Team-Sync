@@ -15,6 +15,7 @@ import TextParallax from '../../components/animations/TextParallax';
 import SignIn from '../../components/SignIn';
 import SignUp from '../../components/SignUp';
 import Navbar from './components/Navbar';
+import ExploreMenu from '../../components/animations/ExploreMenu';
 
 // Register GSAP plugins
 gsap.registerPlugin(ScrollTrigger);
@@ -34,6 +35,13 @@ const SectionOverlay = styled.div`
   position: relative;
   background: linear-gradient(to bottom, rgba(15, 15, 15, 0.7), #0f0f0f);
   z-index: 4;
+`;
+
+const ExploreContainer = styled.div`
+  position: fixed;
+  top: 20px;
+  right: 40px;
+  z-index: 1000;
 `;
 
 function Home() {
@@ -158,6 +166,12 @@ function Home() {
       <Preloader ref={preloaderRef} />
       <Navbar setSignInOpen={setSignInOpen} />
       <SideMenu />
+      
+      {/* Explore Menu in top-right corner */}
+      <ExploreContainer>
+        <ExploreMenu />
+      </ExploreContainer>
+      
       <MainContent ref={mainRef}>
         <Hero setSignInOpen={setSignInOpen} />
         <TextParallax phrases={['Team', 'Sync', 'Growth']} />

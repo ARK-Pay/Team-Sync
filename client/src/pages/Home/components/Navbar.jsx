@@ -11,6 +11,7 @@ const Navbar = ({ setSignInOpen }) => {
   const location = useLocation(); // To get the current page location
   const [menuOpen, setMenuOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
+  const [exploreOpen, setExploreOpen] = useState(false);
   const dispatch = useDispatch();
   const { isLoggedIn } = useSelector((state) => state.user);
   const [profileImage, setProfileImage] = useState(
@@ -30,6 +31,43 @@ const Navbar = ({ setSignInOpen }) => {
     };
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Check for explore menu open/close
+  useEffect(() => {
+    const checkExploreMenu = () => {
+      // Check if the nav-panel is visible
+      const navPanel = document.querySelector('.nav-panel');
+      if (navPanel) {
+        setExploreOpen(navPanel.style.visibility === 'visible');
+      }
+    };
+
+    // Create MutationObserver to watch for visibility changes
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'style') {
+          checkExploreMenu();
+        }
+      });
+    });
+
+    // Start observing the nav-panel
+    const navPanel = document.querySelector('.nav-panel');
+    if (navPanel) {
+      observer.observe(navPanel, { attributes: true });
+    }
+
+    // Listen for button clicks
+    const exploreBtn = document.querySelector('.button--bestia');
+    if (exploreBtn) {
+      exploreBtn.addEventListener('click', checkExploreMenu);
+    }
+
+    return () => {
+      if (navPanel) observer.disconnect();
+      if (exploreBtn) exploreBtn.removeEventListener('click', checkExploreMenu);
+    };
   }, []);
 
   // Update profile image when localStorage changes
@@ -84,6 +122,11 @@ const Navbar = ({ setSignInOpen }) => {
   // Only render the Navbar if we're on the homepage
   if (location.pathname !== "/") {
     return null; // Return null if the current path is not the home page
+  }
+
+  // Don't show navbar if explore menu is open
+  if (exploreOpen) {
+    return null;
   }
 
   return (

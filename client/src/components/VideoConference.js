@@ -267,20 +267,54 @@ const VideoConference = ({ roomId }) => {
   };
 
   // Toggle camera on/off
-  const toggleCamera = () => {
+  const toggleCamera = async () => {
     if (stream) {
       const videoTrack = stream.getVideoTracks()[0];
-      videoTrack.enabled = !videoTrack.enabled;
-      setCameraOn(videoTrack.enabled);
+      
+      if (videoTrack.enabled) {
+        // Turning camera off
+        videoTrack.enabled = false;
+        setCameraOn(false);
+      } else {
+        // Turning camera on - need to restart the track
+        try {
+          // Stop the current track
+          videoTrack.stop();
+          
+          // Get a new video track
+          const newStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          const newVideoTrack = newStream.getVideoTracks()[0];
+          
+          // Replace the old track with the new one
+          stream.removeTrack(videoTrack);
+          stream.addTrack(newVideoTrack);
+          
+          // Update the video element
+          if (myVideo.current) {
+            myVideo.current.srcObject = null;
+            myVideo.current.srcObject = stream;
+            await myVideo.current.play().catch(e => {
+              console.error("Error playing video after camera toggle:", e);
+            });
+          }
+          
+          newVideoTrack.enabled = true;
+          setCameraOn(true);
+        } catch (error) {
+          console.error("Error restarting camera:", error);
+          showNotificationMessage("Failed to turn camera back on", "error");
+          return;
+        }
+      }
       
       // Update yourself in participants list
-      updateParticipant(socket.id, { cameraOn: videoTrack.enabled });
+      updateParticipant(socket.id, { cameraOn: !videoTrack.enabled ? false : true });
       
       // Notify others of change
-      socket.emit("camera-toggle", { userId: socket.id, cameraOn: videoTrack.enabled });
+      socket.emit("camera-toggle", { userId: socket.id, cameraOn: !videoTrack.enabled ? false : true });
       
       // Show notification
-      showNotificationMessage(`Camera ${videoTrack.enabled ? 'turned on' : 'turned off'}`, "info");
+      showNotificationMessage(`Camera ${!videoTrack.enabled ? 'turned off' : 'turned on'}`, "info");
     }
   };
 

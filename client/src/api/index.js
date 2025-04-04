@@ -6,15 +6,28 @@ const API = axios.create({
   baseURL: process.env.REACT_APP_API_URL || "http://localhost:3001" 
 });
 
+// Helper function to validate token format
+const isValidToken = (token) => {
+  return token && token !== 'null' && token !== 'undefined' && token.length > 10;
+};
+
 // Request interceptor to add authentication token to headers
 API.interceptors.request.use(
   (config) => {
     // Get token from localStorage
     const token = localStorage.getItem('token');
     
-    // If token exists, add it to the request headers
-    if (token) {
-      config.headers.Authorization = token;
+    // Only add token if it's valid
+    if (isValidToken(token)) {
+      config.headers.authorization = token;
+      console.log('Sending request with token:', token);
+    } else {
+      console.warn('Invalid token detected:', token);
+      // If we're not on a login/signup page and token is invalid, redirect to login
+      if (!config.url.includes('/signin') && !config.url.includes('/signup')) {
+        console.warn('Invalid token for authenticated route, redirecting to login');
+        // We'll handle this in the response interceptor
+      }
     }
     
     return config;
@@ -32,6 +45,8 @@ API.interceptors.response.use(
   (error) => {
     // Handle 401 (Unauthorized) errors globally
     if (error.response && error.response.status === 401) {
+      console.log('401 Unauthorized response received, clearing auth data');
+      
       // Clear localStorage
       localStorage.removeItem('token');
       localStorage.removeItem('userName');

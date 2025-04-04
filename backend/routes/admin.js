@@ -2,8 +2,9 @@
 const express = require("express");
 const router = express.Router();
 const { Admin, User,Project } = require("../db/index"); // Import the Admin model
-const { validateAdminSignIn, tokenValidationAdmin, tokenValidationUser, validateUserStateChange } = require("../middlewares/AdminMiddlewares"); // Import the validation middleware
+const { validateAdminSignIn, validateUserStateChange } = require("../middlewares/AdminMiddlewares"); // Import the validation middleware
 const { validateProjectApproval, approveProject, getAllProjects, getAllUsers,archiveProject } = require("../middlewares/AdminMiddlewares");
+const { validateAdminToken, generateToken } = require("../middlewares/authMiddleware"); // Import new auth middleware
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 require("dotenv").config();
@@ -29,14 +30,12 @@ router.post("/signin", validateAdminSignIn, async (req, res) => {
         }
 
         // Create a JWT token using the admin's email
-        const token = jwt.sign({ email, admin_id:admin.id }, process.env.JWT_SECRET, {
-            expiresIn: "12h",
-        });
+        const token = generateToken({ email, admin_id: admin.id });
 
         return res.json({
             message: "Admin signed in successfully.",
             token,
-            name:admin.name
+            name: admin.name
         });
     } catch (error) {
         console.error("Error during admin sign-in:", error);
@@ -47,17 +46,17 @@ router.post("/signin", validateAdminSignIn, async (req, res) => {
 });
 
 // Additional routes can be defined here    
-router.post("/approve-project",tokenValidationAdmin, validateProjectApproval, approveProject);
+router.post("/approve-project", validateAdminToken, validateProjectApproval, approveProject);
 
 // Route to get all users (excluding passwords) and their projects
-router.get("/all-users",tokenValidationAdmin, getAllUsers);
+router.get("/all-users", validateAdminToken, getAllUsers);
 
 // Route to get all projects and their details
-router.get("/all-projects",tokenValidationAdmin, getAllProjects);
+router.get("/all-projects", validateAdminToken, getAllProjects);
 
-router.get("/all-users-Users", tokenValidationUser, getAllUsers);
+router.get("/all-users-Users", validateAdminToken, getAllUsers);
 
-router.put("/user-state",tokenValidationAdmin,validateUserStateChange, async (req,res)=>{
+router.put("/user-state", validateAdminToken, validateUserStateChange, async (req,res)=>{
     //request body
     const user=req.user;
     if (user.state==="verified"){
@@ -77,7 +76,7 @@ router.put("/user-state",tokenValidationAdmin,validateUserStateChange, async (re
     }
 })
 
-router.get('/all-admins',tokenValidationAdmin, async (req, res) => {
+router.get('/all-admins', validateAdminToken, async (req, res) => {
     try {
       // Fetch all admin documents from the Admin collection
     const admins = await Admin.find({});
@@ -88,10 +87,10 @@ router.get('/all-admins',tokenValidationAdmin, async (req, res) => {
   });
 
 // Archive a project (admin only)
-router.put('/archive', tokenValidationAdmin, archiveProject);
+router.put('/archive', validateAdminToken, archiveProject);
 
 // Change user role (User to Admin or Admin to User)
-router.put("/change-role", tokenValidationAdmin, async (req, res) => {
+router.put("/change-role", validateAdminToken, async (req, res) => {
     const { user_id, new_role } = req.body;
     console.log(new_role);
     try {
@@ -147,7 +146,7 @@ router.put("/change-role", tokenValidationAdmin, async (req, res) => {
 });
 
 // Route to get archived projects
-router.get('/get-archived-projects', tokenValidationAdmin, async (req, res) => {
+router.get('/get-archived-projects', validateAdminToken, async (req, res) => {
     try {
         // Find projects with status 'archived'
         const archivedProjects = await Project.find({ status: 'archived' });
@@ -167,4 +166,3 @@ router.get('/get-archived-projects', tokenValidationAdmin, async (req, res) => {
 
 
 module.exports = router;
-

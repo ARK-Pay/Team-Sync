@@ -205,12 +205,15 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
 
   // Task suggestions state
   const [taskSuggestions, setTaskSuggestions] = useState([]);
-  const [showSuggestions, setShowSuggestions] = useState(true);
+  const [showSuggestions, setShowSuggestions] = useState(() => {
+    // Check if suggestions have been shown before
+    return localStorage.getItem('suggestions_shown') !== 'true';
+  });
   const [apiResponses, setApiResponses] = useState({});
   
   // Generate task suggestions based on existing tasks
   const generateTaskSuggestions = useCallback(() => {
-    if (!showSuggestions) return;
+    if (!showSuggestions) return [];
     
     // Check if we have tasks in localStorage or from the API response
     const allTasks = apiResponses?.allTasks || [];
@@ -239,11 +242,18 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
     } else {
       // Analyze existing tasks to generate smart suggestions
       const completedTasks = allTasks.filter(task => 
-        task.status === '2' || task.status === 'completed' || task.status === 'Completed'
+        task.status === '2' || 
+        task.status === 2 || 
+        task.status === 'completed' || 
+        task.status === 'Completed' || 
+        task.status?.toLowerCase() === 'completed'
       );
       
       const inProgressTasks = allTasks.filter(task => 
-        task.status === '1' || task.status === 'in progress' || task.status === 'In Progress'
+        task.status === '1' || 
+        task.status === 1 || 
+        task.status === 'in progress' || 
+        task.status === 'In Progress'
       );
       
       // If there are tasks in progress, suggest follow-up tasks
@@ -300,13 +310,15 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
   
   // Update suggestions when dashboard data changes
   useEffect(() => {
-    if (selectedSidebar === 'dashboard') {
+    if (selectedSidebar === 'dashboard' && showSuggestions) {
       const suggestions = generateTaskSuggestions();
       if (suggestions && suggestions.length > 0) {
         setTaskSuggestions(suggestions);
+        // Mark that suggestions have been shown
+        localStorage.setItem('suggestions_shown', 'true');
       }
     }
-  }, [dashboardStats, generateTaskSuggestions, selectedSidebar]);
+  }, [dashboardStats, generateTaskSuggestions, selectedSidebar, showSuggestions]);
   
   // Handle accepting a task suggestion
   const handleAcceptSuggestion = (suggestion) => {
@@ -332,11 +344,32 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
     const dismissedSuggestions = JSON.parse(localStorage.getItem('dismissed_suggestions') || '[]');
     dismissedSuggestions.push(suggestionId);
     localStorage.setItem('dismissed_suggestions', JSON.stringify(dismissedSuggestions));
+    
+    // If all suggestions are dismissed, hide the suggestions section
+    if (taskSuggestions.length <= 1) {
+      setShowSuggestions(false);
+    }
+  };
+  
+  // Function to close all suggestions
+  const closeAllSuggestions = () => {
+    setShowSuggestions(false);
+    // Mark that suggestions have been shown and closed
+    localStorage.setItem('suggestions_shown', 'true');
   };
 
   // Create a reusable function to fetch dashboard stats
-  const fetchDashboardStats = useCallback(async () => {
+  const fetchDashboardStats = useCallback(async (force = false) => {
     try {
+      // Check if we have recently fetched data (within the last 30 seconds)
+      const lastFetchTime = localStorage.getItem('dashboard_last_fetch_time');
+      const currentTime = Date.now();
+      
+      if (!force && lastFetchTime && (currentTime - parseInt(lastFetchTime)) < 30000) {
+        console.log("Using cached dashboard data (fetched within last 30 seconds)");
+        return;
+      }
+      
       setIsRefreshing(true);
       const token = localStorage.getItem('token');
       
@@ -346,6 +379,9 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
       }
       
       console.log("Fetching dashboard data from backend...");
+      
+      // Store current fetch time
+      localStorage.setItem('dashboard_last_fetch_time', currentTime.toString());
       
       // Create an object to store all API responses
       const apiResponsesData = {};
@@ -507,20 +543,32 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
 
   // Fetch data on mount and when selected sidebar changes to dashboard
   useEffect(() => {
+    let isMounted = true;
+    
     if (selectedSidebar === 'dashboard') {
       console.log("Dashboard selected - fetching initial data");
-      fetchDashboardStats();
+      // Use a small timeout to prevent multiple calls during navigation
+      const timer = setTimeout(() => {
+        if (isMounted) {
+          fetchDashboardStats();
+        }
+      }, 300);
+      
+      return () => {
+        isMounted = false;
+        clearTimeout(timer);
+      };
     }
   }, [selectedSidebar, fetchDashboardStats]);
   
-  // Set up polling to refresh dashboard data every 1 minute
+  // Set up polling to refresh dashboard data every 2 minutes (increased from 1 minute)
   useEffect(() => {
     if (selectedSidebar === 'dashboard') {
-      console.log("Setting up dashboard data polling (every 60 seconds)");
+      console.log("Setting up dashboard data polling (every 120 seconds)");
       const intervalId = setInterval(() => {
         console.log("Auto-refreshing dashboard data");
-        fetchDashboardStats();
-      }, 60000); // 1 minute
+        fetchDashboardStats(true); // Force refresh on interval
+      }, 120000); // 2 minutes
       
       return () => {
         console.log("Clearing dashboard data polling");
@@ -532,7 +580,7 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
   // Handle manual refresh
   const handleRefresh = () => {
     console.log("Manual refresh requested");
-    fetchDashboardStats();
+    fetchDashboardStats(true); // Force refresh on manual request
   };
 
   // Format date for last updated display
@@ -664,32 +712,42 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
                 delay={index * 300}
               />
             ))}
+            <button 
+              className="text-gray-400 hover:text-gray-600"
+              onClick={closeAllSuggestions}
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         )}
       
         {/* Dashboard Header */}
-        <div className="mb-5 relative z-10">
-          <h1 className="text-2xl font-semibold mb-1">Dashboard</h1>
-          <p className="text-gray-600 text-sm">Overview of your projects and activities</p>
-        </div>
-        
-        {/* Team Overview Section */}
-        <div className="mb-8 relative z-10">
-          <div className="flex justify-between items-center mb-4">
+        <div className="mb-6 relative z-10">
+          <div className="flex justify-between items-center">
             <div>
-              <h2 className="text-xl font-semibold">Team Overview</h2>
-              <p className="text-gray-600 text-sm">View your team's progress and activity • Last updated: {formatLastUpdated(lastUpdated)}</p>
+              <h1 className="text-3xl font-bold text-gray-800 mb-1">Dashboard</h1>
+              <p className="text-gray-600">Overview of your projects and activities</p>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-3">
               {renderThemeSelector()}
               {renderAnimationSelector()}
               <button 
                 className={`p-2 rounded-full hover:bg-gray-100 transition-colors ${isRefreshing ? 'animate-spin text-blue-600' : 'text-gray-400'}`}
                 onClick={handleRefresh}
                 disabled={isRefreshing}
+                title="Refresh dashboard"
               >
                 <FontAwesomeIcon icon={faSync} className="w-5 h-5" />
               </button>
+            </div>
+          </div>
+        </div>
+        
+        {/* Team Overview Section */}
+        <div className="mb-8 relative z-10">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <p className="text-gray-600 text-sm">View your team's progress and activity • Last updated: {formatLastUpdated(lastUpdated)}</p>
             </div>
           </div>
           
@@ -701,7 +759,11 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
                   <p className="text-gray-600 mb-1">Projects</p>
                   <p className="text-3xl font-semibold">{dashboardStats.totalProjects}</p>
                 </div>
-                <div className={theme.statsCard1 + " p-3 rounded-md"}>
+                <div 
+                  className={theme.statsCard1 + " p-3 rounded-md cursor-pointer hover:opacity-80 transition-opacity"}
+                  onClick={() => setSidebarSelection("projects")}
+                  title="View all projects"
+                >
                   <FontAwesomeIcon icon={faPlus} size="lg" />
                 </div>
               </div>
@@ -713,7 +775,11 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
                   <p className="text-gray-600 mb-1">Total Tasks</p>
                   <p className="text-3xl font-semibold">{dashboardStats.totalTasks}</p>
                 </div>
-                <div className={theme.statsCard2 + " p-3 rounded-md"}>
+                <div 
+                  className={theme.statsCard2 + " p-3 rounded-md cursor-pointer hover:opacity-80 transition-opacity"}
+                  onClick={() => setSidebarSelection("created-tasks")}
+                  title="View created tasks"
+                >
                   <FontAwesomeIcon icon={faTable} size="lg" />
                 </div>
               </div>
@@ -725,7 +791,15 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
                   <p className="text-gray-600 mb-1">Completed Tasks</p>
                   <p className="text-3xl font-semibold">{dashboardStats.completedTasks}</p>
                 </div>
-                <div className={theme.statsCard3 + " p-3 rounded-md"}>
+                <div 
+                  className={theme.statsCard3 + " p-3 rounded-md cursor-pointer hover:opacity-80 transition-opacity"}
+                  onClick={() => {
+                    setSidebarSelection("tasks");
+                    // Store filter preference for completed tasks
+                    localStorage.setItem('tasks_filter', 'completed');
+                  }}
+                  title="View completed tasks"
+                >
                   <FontAwesomeIcon icon={faChartLine} size="lg" />
                 </div>
               </div>
@@ -737,7 +811,11 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
                   <p className="text-gray-600 mb-1">Team Members</p>
                   <p className="text-3xl font-semibold">{dashboardStats.teamMembers}</p>
                 </div>
-                <div className={theme.statsCard4 + " p-3 rounded-md"}>
+                <div 
+                  className={theme.statsCard4 + " p-3 rounded-md cursor-pointer hover:opacity-80 transition-opacity"}
+                  onClick={() => setSidebarSelection("users")}
+                  title="View users"
+                >
                   <FontAwesomeIcon icon={faUsers} size="lg" />
                 </div>
               </div>
@@ -861,17 +939,14 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
       <div className="flex items-center justify-between mb-6 relative z-10">
         <div className="flex items-center gap-4">
           <button
-            className="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
             onClick={() => setSidebarOpen(true)}
+            className="fixed bottom-4 left-4 lg:hidden bg-white p-2 rounded-full shadow-lg z-50"
           >
-            <Menu className="h-6 w-6" />
+            <Menu className="h-6 w-6 text-gray-600" />
           </button>
           {selectedSidebar === "dashboard" && (
             <div>
-              <h1 className="text-2xl font-semibold">Dashboard</h1>
-              <p className="text-gray-600 text-sm mt-1">
-                Overview of your projects and activities
-              </p>
+              {/* Dashboard content is now rendered in the main dashboard header above */}
             </div>
           )}
           {selectedSidebar === "projects" && (

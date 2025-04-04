@@ -12,29 +12,45 @@ const PendingProject = () => {
   const [loading, setLoading] = useState(true); // State for loading status
   const [error, setError] = useState(null); // State for error handling
 
+  const fetchProjects = async () => {
+    console.log("fetching");
+    try {
+      const token = localStorage.getItem('token'); // Get token from local storage
+      const response = await axios.get('http://localhost:3001/admin/all-projects', {
+        headers: {
+          'authorization': token, // Set Authorization header without 'Bearer' prefix
+          'Content-Type': 'application/json' // Set content type
+        },
+      });
+
+      setProjects(response.data); // Set the projects state
+      setFilteredProjects(response.data); // Set the filtered projects to initial projects
+    } catch (error) {
+      setError(error.response ? error.response.data.message : error.message); // Handle any errors
+    } finally {
+      setLoading(false); // Stop loading
+    }
+  };
+
   useEffect(() => {
-    const fetchProjects = async () => {
-      console.log("fetching");
-      try {
-        const token = localStorage.getItem('token'); // Get token from local storage
-        const response = await axios.get('http://localhost:3001/admin/all-projects', {
-          headers: {
-            'authorization': token, // Set Authorization header
-            'Content-Type': 'application/json' // Set content type
-          },
-        });
-
-        setProjects(response.data); // Set the projects state
-        setFilteredProjects(response.data); // Set the filtered projects to initial projects
-      } catch (error) {
-        setError(error.response ? error.response.data.message : error.message); // Handle any errors
-      } finally {
-        setLoading(false); // Stop loading
-      }
-    };
-
     fetchProjects(); // Call the function to fetch projects
   }, []);
+
+  // Handle project approval
+  const handleProjectApproved = (projectId) => {
+    // Remove the approved project from the filtered list
+    const updatedFilteredProjects = filteredProjects.filter(project => project.id !== projectId);
+    setFilteredProjects(updatedFilteredProjects);
+    
+    // Also update the main projects list
+    const updatedProjects = projects.map(project => {
+      if (project.id === projectId) {
+        return { ...project, is_approved: true, status: 'approved' };
+      }
+      return project;
+    });
+    setProjects(updatedProjects);
+  };
 
   // Search function
   const handleSearch = (e) => {
@@ -86,7 +102,11 @@ const PendingProject = () => {
           <tbody>
             {filteredProjects.length > 0 ? (
               filteredProjects.map(project => (
-                !project.is_approved && <ProjectRow key={project.id} project={project} />
+                !project.is_approved && <ProjectRow 
+                  key={project.id} 
+                  project={project} 
+                  onProjectApproved={handleProjectApproved}
+                />
               ))
             ) : (
               <tr>

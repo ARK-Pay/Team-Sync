@@ -85,17 +85,42 @@ const approveProject = async (req, res) => {
 
 const tokenValidationAdmin=async(req,res, next)=>{
     try {
-        const token = req.header('authorization');
-        if (!token) {
+        const authHeader = req.header('authorization');
+        console.log('Auth header received:', authHeader);
+        
+        if (!authHeader) {
             return res.status(401).json({ message: 'Token not found' });
         }
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const admin = await Admin.findOne({ email: decoded.email });
-        if (!admin) {
-            return res.status(401).json({ message: 'Admin not found' });
+        
+        // Extract token from the Authorization header
+        // Format is typically "Bearer <token>"
+        let token = authHeader;
+        if (authHeader.startsWith('Bearer ')) {
+            token = authHeader.substring(7);
         }
-        req.user = { adminId: admin.id }; // Set the authenticated user in the request object
-        next();
+        
+        console.log('Token after extraction:', token);
+        
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            console.log('Decoded token:', decoded);
+            
+            // Check if decoded token has required fields
+            if (!decoded || !decoded.email) {
+                return res.status(401).json({ message: 'Invalid token structure' });
+            }
+            
+            const admin = await Admin.findOne({ email: decoded.email });
+            if (!admin) {
+                return res.status(401).json({ message: 'Admin not found' });
+            }
+            
+            req.user = { adminId: admin.id }; // Set the authenticated user in the request object
+            next();
+        } catch (jwtError) {
+            console.error('JWT verification error:', jwtError);
+            return res.status(401).json({ message: 'Invalid token format or signature' });
+        }
     } catch (error) {
         console.error('Error validating token:', error);
         return res.status(401).json({ message: 'Invalid token' });
@@ -104,17 +129,41 @@ const tokenValidationAdmin=async(req,res, next)=>{
 
 const tokenValidationUser=async(req,res,next)=>{
     try {
-        const token = req.header('authorization');
-        if (!token) {
+        const authHeader = req.header('authorization');
+        if (!authHeader) {
             return res.status(401).json({ message: 'Token not found' });
         }
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findOne({ email: decoded.email });
-        if (!user) {
-            return res.status(401).json({ message: 'User not found' });
+        
+        // Extract token from the Authorization header
+        // Format is typically "Bearer <token>"
+        let token = authHeader;
+        if (authHeader.startsWith('Bearer ')) {
+            token = authHeader.substring(7);
         }
-        req.user = { userId: user.id }; // Set the authenticated user in the request object
-        next();
+        
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            
+            // Check if decoded token has required fields
+            if (!decoded || !decoded.email) {
+                return res.status(401).json({ message: 'Invalid token structure' });
+            }
+            
+            const user = await User.findOne({ email: decoded.email });
+            if (!user) {
+                return res.status(401).json({ message: 'User not found' });
+            }
+            
+            if (user.state === "blocked") {
+                return res.status(401).json({ message: 'User is blocked' });
+            }
+            
+            req.user = user; // Set the authenticated user in the request object
+            next();
+        } catch (jwtError) {
+            console.error('JWT verification error:', jwtError);
+            return res.status(401).json({ message: 'Invalid token format or signature' });
+        }
     } catch (error) {
         console.error('Error validating token:', error);
         return res.status(401).json({ message: 'Invalid token' });

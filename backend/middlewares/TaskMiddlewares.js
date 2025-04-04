@@ -83,54 +83,80 @@ const validateTaskCreation = async (req, res, next) => {
 // Middleware function to create a new task
 const createTask = async (req, res) => {
     try {
+        console.log('CREATE TASK: Starting task creation...');
         const { project_id } = req.params;
         const { title, description, deadline, status, priority, creator_id, assignees, project_name } = req.body;
+        
+        console.log('CREATE TASK: Request parameters:', { 
+            project_id,
+            title, 
+            description: description?.substring(0, 20) + '...', 
+            deadline, 
+            status, 
+            priority,
+            creator_id,
+            assignees,
+            project_name
+        });
 
         // Ensure the project exists and is approved before creating a task
+        console.log('CREATE TASK: Checking if project exists:', project_id);
         const project = await Project.findOne({ id: project_id, is_approved: true });
         if (!project) {
+            console.log('CREATE TASK: Project not found or not approved');
             return res.status(404).json({ message: 'Project not found or not approved' });
         }
+        console.log('CREATE TASK: Project found');
 
         // Validate assignees - Check if each ID is a valid User ID
         if (assignees && assignees.length > 0) {
+            console.log('CREATE TASK: Validating assignees:', assignees);
             const validAssignees = await User.find({ id: { $in: assignees } }, { id: 1 });
             const validAssigneeIds = validAssignees.map(user => user._id.toString());
 
             // Check if any assignee ID is invalid
             const invalidAssignees = assignees.filter(assignee => !validAssigneeIds.includes(assignee));
             if (invalidAssignees.length > 0) {
+                console.log('CREATE TASK: Invalid assignees:', invalidAssignees);
                 return res.status(400).json({
                     message: 'Invalid assignee IDs: ' + invalidAssignees.join(', ')
                 });
             }
+            console.log('CREATE TASK: All assignees are valid');
         }
 
         // Create a new task with the provided data
+        console.log('CREATE TASK: Creating new task');
         const newTask = new Task({
             project_id,
             title,
             description,
             deadline: deadline ? new Date(deadline) : undefined,
-            status,
-            priority,
+            status: status || '0', // Default to "To Do" if not specified
+            priority: priority || '1', // Default to "Medium" if not specified
             creator_id,
             assignees: assignees || [],
             project_name
         });
-        await newTask.save();
+        
+        console.log('CREATE TASK: Saving task to database...');
+        const savedTask = await newTask.save();
+        console.log('CREATE TASK: Task saved successfully with ID:', savedTask.id);
 
         // Update ProjectStatistics for the project
+        console.log('CREATE TASK: Updating project statistics...');
         await updateProjectStatistics(project_id);
+        console.log('CREATE TASK: Project statistics updated');
 
         return res.status(201).json({
             message: 'Task created successfully',
-            task: newTask,
+            task: savedTask,
         });
     } catch (error) {
-        console.error('Error creating task:', error);
+        console.error('CREATE TASK ERROR:', error);
         return res.status(500).json({
-            message: 'Internal server error',
+            message: 'Internal server error: ' + error.message,
+            stack: error.stack
         });
     }
 };
@@ -166,19 +192,39 @@ async function updateProjectStatistics(projectId) {
 const viewTasksByProject = async (req, res) => {
     try {
         const { project_id } = req.params;
+        console.log('VIEW TASKS: Fetching tasks for project:', project_id);
 
         // Find all tasks associated with the provided project ID
-        const tasks = await Task.find({ project_id })
-
+        const tasks = await Task.find({ project_id });
+        console.log(`VIEW TASKS: Found ${tasks.length} tasks for project ${project_id}`);
+        
         if (!tasks || tasks.length === 0) {
+            console.log('VIEW TASKS: No tasks found for this project');
             return res.status(200).json([]);
         }
 
-        return res.status(200).json(tasks);
+        // Add additional task details or process data here if needed
+        const taskDetails = tasks.map(task => ({
+            id: task.id,
+            title: task.title,
+            description: task.description,
+            deadline: task.deadline,
+            status: task.status,
+            priority: task.priority,
+            creator_id: task.creator_id,
+            assignees: task.assignees,
+            created_at: task.created_at,
+            updated_at: task.updated_at,
+            project_name: task.project_name,
+            project_id: task.project_id
+        }));
+
+        console.log('VIEW TASKS: Returning task details to client');
+        return res.status(200).json(taskDetails);
     } catch (error) {
         console.error('Error retrieving tasks:', error);
         return res.status(500).json({
-            message: 'Internal server error',
+            message: 'Internal server error: ' + error.message
         });
     }
 };
@@ -258,7 +304,7 @@ const editTaskDetails = async (req, res) => {
         const { title, description, priority, deadline, status } = req.body;
 
         // Find the task by its ID
-        const task = await Task.findById(task_id);
+        const task = await Task.findOne({ id: task_id });
         if (!task) {
             return res.status(404).json({ message: 'Task not found' });
         }
@@ -283,8 +329,17 @@ const editTaskDetails = async (req, res) => {
         }
 
         if (deadline !== undefined) {
-            if (task.deadline !== deadline) {
-                updates.deadline = deadline;
+            // Format the provided deadline as a date for comparison
+            const newDeadline = new Date(deadline);
+            const currentDeadline = task.deadline ? new Date(task.deadline) : null;
+
+            // Check if deadlines are different (accounting for null or different dates)
+            if (
+                (currentDeadline === null && newDeadline !== null) ||
+                (currentDeadline !== null && newDeadline === null) ||
+                (currentDeadline !== null && newDeadline !== null && newDeadline.getTime() !== currentDeadline.getTime())
+            ) {
+                updates.deadline = newDeadline;
                 hasChanges = true;
             }
         }
@@ -294,9 +349,11 @@ const editTaskDetails = async (req, res) => {
             hasChanges = true;
         }
 
+        // If no changes, return a message
         if (!hasChanges) {
-            return res.status(400).json({ 
-                message: 'No changes detected. All provided values are the same as current values.' 
+            return res.status(200).json({
+                message: 'No changes detected in the update',
+                task,
             });
         }
 
@@ -346,32 +403,36 @@ const deleteTask = async (req, res) => {
 const getTasksCreatedByUser = async (req, res) => {
     try {
         const { userEmail } = req.params;
+        console.log('GET CREATED TASKS: Fetching tasks created by:', userEmail);
+        
         // Find tasks where the user is the creator
         const tasks = await Task.find({ creator_id: userEmail });
+        console.log(`GET CREATED TASKS: Found ${tasks.length} tasks created by ${userEmail}`);
 
         return res.status(200).json(tasks);
     } catch (error) {
         console.error('Error fetching tasks created by user:', error);
         return res.status(500).json({
-            message: 'Internal server error'
+            message: 'Internal server error: ' + error.message
         });
     }
 };
 
 // Middleware for fetching tasks associated with a user
-const   getTasksAssignedToUser = async (req, res) => {
+const getTasksAssignedToUser = async (req, res) => {
     try {
         const { user_id } = req.params; // Extract user ID from URL parameters
-        console.log(user_id)
+        console.log('GET ASSIGNED TASKS: Fetching tasks assigned to user:', user_id);
 
         // Find tasks where the user is an assignee
         const tasks = await Task.find({ assignees: user_id });
+        console.log(`GET ASSIGNED TASKS: Found ${tasks.length} tasks assigned to ${user_id}`);
 
         return res.status(200).json(tasks);
     } catch (error) {
         console.error('Error fetching tasks assigned to user:', error);
         return res.status(500).json({
-            message: 'Internal server error '
+            message: 'Internal server error: ' + error.message
         });
     }
 };

@@ -7,6 +7,7 @@ import { useRecoilValue } from 'recoil';
 import { authenticationState } from '../../../store/atoms/authVerifierSelector';
 import { sidebarSelection } from '../../../store/atoms/adminDashboardAtoms';
 import ProjectView from '../project-view/ProjectView';
+import AccessManager from '../access-manager/AccessManager';
 
 //project dashboard
 const ProjectDashboard = () => {
@@ -27,6 +28,18 @@ const ProjectDashboard = () => {
     }
   }, 100);
 
+  // Render the appropriate component based on sidebar selection
+  const renderContent = () => {
+    switch(selectedSidebar) {
+      case 'project-view':
+        return <ProjectView />;
+      case 'access-manager':
+        return <AccessManager />;
+      default:
+        return <Hero sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -34,7 +47,7 @@ const ProjectDashboard = () => {
       
       {/* Main Content - adjusted to be below navbar with proper spacing */}
       <div className="pt-16 lg:ml-56 min-h-screen">
-        {selectedSidebar==="project-view"?<ProjectView />:<Hero sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />}
+        {renderContent()}
       </div>
     </div>
   );

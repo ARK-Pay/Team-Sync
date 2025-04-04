@@ -4,7 +4,7 @@ import { ProgressBar } from '../common/ProgressBar';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
-export const ProjectRow = ({ project, onArchive }) => {
+export const ProjectRow = ({ project, onArchive, onProjectApproved }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [modalAction, setModalAction] = useState(null); // "approve" or "archive"
@@ -37,7 +37,7 @@ export const ProjectRow = ({ project, onArchive }) => {
         },
         {
           headers: {
-            authorization: token,
+            'authorization': token,
             'Content-Type': 'application/json',
           },
         }
@@ -46,7 +46,14 @@ export const ProjectRow = ({ project, onArchive }) => {
       if (response.status === 200) {
         toast.success('Project has been approved successfully.', { id: toastId });
         setShowModal(false);
-        window.location.reload();
+        
+        // Instead of reloading the page, refresh the data or update UI
+        if (typeof onProjectApproved === 'function') {
+          onProjectApproved(project.id);
+        } else {
+          // Refresh only the current component without full page reload
+          window.location.href = '/dashboard/admin';
+        }
       }
     } catch (error) {
       toast.error('Failed to approve the project.', { id: toastId });
@@ -65,7 +72,7 @@ export const ProjectRow = ({ project, onArchive }) => {
         },
         {
           headers: {
-            authorization: token,
+            'authorization': token,
             'Content-Type': 'application/json',
           },
         }
@@ -112,7 +119,7 @@ export const ProjectRow = ({ project, onArchive }) => {
         const token=localStorage.getItem("token");
         const response = await axios.get(`http://localhost:3001/project/report/${projectid}`, {
           headers: {
-            authorization: token,
+            'authorization': token,
           },
         });
         const value=(response.data.completedTasks/response.data.totalTasks)*100;

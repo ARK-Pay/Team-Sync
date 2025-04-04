@@ -8,6 +8,7 @@ import ChatModal from './components/ChatModal';
 import ReportModal from './components/ReportModal';
 import { MessageSquare, Video, DownloadCloud, ChevronLeft, Loader2, AlertCircle, Users, Clock, Calendar, Tag } from 'lucide-react';
 import axios from 'axios';
+import AssignedTasks from './components/AssignedTasks';
 
 // Enhanced video call button with Lucide icon
 const VideoCallButton = () => {
@@ -358,6 +359,9 @@ const ProjectView = () => {
       <div className="pt-[140px] bg-gray-50 min-h-screen">
         <div className="max-w-[1200px] mx-auto px-4 py-6">
           <Hero />
+          <div className="mt-8">
+            <AssignedTasks projectId={projectId} />
+          </div>
         </div>
       </div>
     </div>
