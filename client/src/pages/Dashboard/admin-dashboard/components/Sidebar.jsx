@@ -7,7 +7,8 @@ import {
   faTasks, 
   faFileAlt, 
   faUsers, 
-  faLifeRing 
+  faLifeRing,
+  faEnvelope 
 } from '@fortawesome/free-solid-svg-icons';
 import { userNameState, userEmailState } from '../../../../store/atoms/authAtoms';
 import { useRecoilValue, useSetRecoilState } from 'recoil';
@@ -117,6 +118,10 @@ const Sidebar = ({ isOpen, onClose }) => {
                 setactive("admins");
                 setSidebarSelection("admins");
               }}><IconItem icon={faUsers} label="Admins" active={active==="admins"} /></li>
+              <li onClick={()=>{
+                setactive("mail");
+                setSidebarSelection("mail");
+              }}><IconItem icon={faEnvelope} label="Mail" active={active==="mail"} /></li>
             </ul>
           </nav>
 

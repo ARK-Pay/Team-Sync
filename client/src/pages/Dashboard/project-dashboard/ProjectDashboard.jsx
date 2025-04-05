@@ -8,6 +8,7 @@ import { authenticationState } from '../../../store/atoms/authVerifierSelector';
 import { sidebarSelection } from '../../../store/atoms/adminDashboardAtoms';
 import ProjectView from '../project-view/ProjectView';
 import AccessManager from '../access-manager/AccessManager';
+import MailSystem from '../mail-system/MailSystem';
 
 //project dashboard
 const ProjectDashboard = () => {
@@ -35,6 +36,8 @@ const ProjectDashboard = () => {
         return <ProjectView />;
       case 'access-manager':
         return <AccessManager />;
+      case 'mail':
+        return <MailSystem />;
       default:
         return <Hero sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />;
     }

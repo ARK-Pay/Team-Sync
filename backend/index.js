@@ -10,6 +10,7 @@ const taskRouter = require("./routes/task");
 const commentRouter = require("./routes/comment");
 const summarizerRouter = require("./routes/summarizer");
 const translatorRouter = require("./routes/translator");
+const mailRouter = require("./routes/mail/mailRoutes");
 
 const app = express();
 const PORT = 3001; // Move this above app.listen()
@@ -27,6 +28,7 @@ app.use("/task", taskRouter);
 app.use("/comment", commentRouter);
 app.use("/api", summarizerRouter);
 app.use("/api", translatorRouter);
+app.use("/mail", mailRouter);
 
 // Start server only after connecting to MongoDB
 const startBackend = async () => {

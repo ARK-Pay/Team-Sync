@@ -40,6 +40,10 @@ const UserSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
+    teamsync_email: {
+        type: String,
+        unique: true
+    },
     password_hash: {
         type: String,
         required: true
