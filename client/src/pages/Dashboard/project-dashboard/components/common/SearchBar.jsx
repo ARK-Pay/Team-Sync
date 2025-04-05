@@ -1,6 +1,6 @@
 import { Search } from 'lucide-react';
 
-export const SearchBar = ({ value, onChange, placeholder }) => (
+const SearchBar = ({ value, onChange, placeholder }) => (
   <div className="relative">
     <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
       <Search className="h-4 w-4 text-gray-400" />
@@ -14,3 +14,7 @@ export const SearchBar = ({ value, onChange, placeholder }) => (
     />
   </div>
 );
+
+// Export both as named and default export for maximum compatibility
+export { SearchBar };
+export default SearchBar;

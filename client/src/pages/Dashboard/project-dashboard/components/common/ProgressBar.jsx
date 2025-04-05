@@ -1,6 +1,6 @@
 import { getProgressColor } from "../../utils/helpers";
 
-export const ProgressBar = ({ progress }) => {
+const ProgressBar = ({ progress }) => {
   const radius = 16;
   const circumference = 2 * Math.PI * radius;
   const strokeDasharray = (progress / 100) * circumference;
@@ -32,3 +32,7 @@ export const ProgressBar = ({ progress }) => {
     </div>
   );
 };
+
+// Export both as named and default export for maximum compatibility
+export { ProgressBar };
+export default ProgressBar;

@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Filter, Plus, Search, Calendar, AlertCircle, Clock, Tag, Layers, User, CheckCircle, CheckSquare, Flag, BarChart2 } from 'lucide-react';
-import { SearchBar } from './common/SearchBar';
-import { TableHeader } from './table/TableHeader';
-import { ProjectRow } from './table/ProjectRow';
+import SearchBar from './common/SearchBar';
+import TableHeader from './table/TableHeader';
+import ProjectRow from './table/ProjectRow';
 import { useSetRecoilState } from 'recoil';
 import { sidebarSelection } from '../../../../store/atoms/adminDashboardAtoms';
 

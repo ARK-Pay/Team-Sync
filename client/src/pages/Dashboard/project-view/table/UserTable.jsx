@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Search, ChevronDown, User } from 'lucide-react';
-import { SearchBar } from '../../project-dashboard/components/common/SearchBar';
+import SearchBar from '../../project-dashboard/components/common/SearchBar';
 
 const UserTable = () => {
   const [isTableVisible, setIsTableVisible] = useState(false);

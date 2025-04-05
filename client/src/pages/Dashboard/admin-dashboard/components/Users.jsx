@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Search, CheckCircle, XCircle, X, Trash2, Edit3 } from 'lucide-react';
-import { SearchBar } from './common/SearchBar';
+import SearchBar from './common/SearchBar';
 import toast from 'react-simple-toasts';
 
 const Users = () => {
@@ -19,8 +19,9 @@ const Users = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   // State to hold the currently selected user for actions
   const [selectedUser, setSelectedUser] = useState(null);
-  const [setIsRoleModalOpen] = useState(false);
-  const [selectedRole] = useState('');
+  // Fixed: Properly initialize these state variables
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+  const [selectedRole, setSelectedRole] = useState('');
 
   // New state for delete modal
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -137,18 +138,6 @@ const Users = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-[200px]">
-        <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return <div className="text-red-600 p-4 text-center">Error: {error}</div>;
-  }
-
   const handleRoleChange = async(user) => {
     const confirmChange = window.confirm(
       `Do you want to change ${user.name}'s role to Admin?`
@@ -165,18 +154,30 @@ const Users = () => {
 
           // Update the user role locally
           const updatedUsers = users.map((u) =>
-            u.id === userId ? { ...u, role: selectedRole } : u
+            u.id === userId ? { ...u, role: "admin" } : u
           );
           setUsers(updatedUsers);
           setFilteredUsers(updatedUsers);
 
-          toast(`Role updated to "${selectedRole}" successfully!`);
+          toast(`Role updated to "admin" successfully!`);
           setIsRoleModalOpen(false);
       } catch (error) {
           toast(error.response ? error.response.data.message : 'Failed to update role!');
       }
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-[200px]">
+        <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="text-red-600 p-4 text-center">Error: {error}</div>;
+  }
 
   return (
     <div className="bg-white rounded-lg shadow">
@@ -279,7 +280,7 @@ const Users = () => {
       )}
 
       {/* Delete Modal */}
-      {isDeleteModalOpen && (
+      {isDeleteModalOpen && userToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div 
             className="absolute inset-0 bg-black bg-opacity-50" 
@@ -294,7 +295,7 @@ const Users = () => {
             </button>
             <h2 className="text-xl font-semibold mb-4">Delete User</h2>
             <p className="text-sm mb-6">
-              Select a new creator for projects of user <strong>{userToDelete?.email}</strong>
+              Select a new creator for projects of user <strong>{userToDelete.email}</strong>
             </p>
             
             <div className="mb-4">

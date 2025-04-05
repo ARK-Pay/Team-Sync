@@ -1,4 +1,4 @@
-export const TableHeader = () => (
+const TableHeader = () => (
   <tr className="border-b bg-gray-100">
     <th className="text-left py-4 px-6 font-medium text-xs">Name</th>
     <th className="text-left py-4 px-6 font-medium text-xs">Status</th>
@@ -9,3 +9,7 @@ export const TableHeader = () => (
     <th className="w-10"></th>
   </tr>
 );
+
+// Export both as named and default export for maximum compatibility
+export { TableHeader };
+export default TableHeader;

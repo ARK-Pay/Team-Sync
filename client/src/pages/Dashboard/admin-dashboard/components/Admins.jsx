@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Search, Edit3 } from 'lucide-react';
-import { SearchBar } from './common/SearchBar';
+import SearchBar from './common/SearchBar';
 import toast from 'react-simple-toasts';
 
 const Admins = () => {
@@ -119,6 +119,7 @@ const Admins = () => {
                 <th className="text-left py-4 px-6 font-medium text-xs">Username</th>
                 <th className="text-left py-4 px-6 font-medium text-xs">Email</th>
                 <th className="text-left py-4 px-6 font-medium text-xs">Joined On</th>
+                <th className="text-left py-4 px-6 font-medium text-xs">Action</th>
               </tr>
             </thead>
             <tbody>

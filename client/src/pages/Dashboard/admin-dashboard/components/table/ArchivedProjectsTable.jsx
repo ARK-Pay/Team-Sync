@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { MoreVertical, ChevronDown } from 'lucide-react';
-import { ProgressBar } from '../common/ProgressBar';
+import ProgressBar from '../common/ProgressBar';
 
 const ArchivedProjectsTable = () => {
   const [isTableVisible, setIsTableVisible] = useState(false);

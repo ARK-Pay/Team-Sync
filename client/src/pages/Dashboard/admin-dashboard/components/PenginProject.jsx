@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios'; // Import Axios
 import { Filter } from 'lucide-react';
-import { SearchBar } from './common/SearchBar';
-import { TableHeader } from './table/TableHeader';
-import { ProjectRow } from './table/ProjectRow';
+import SearchBar from './common/SearchBar';
+import TableHeader from './table/TableHeader';
+import ProjectRow from './table/ProjectRow';
 
 const PendingProject = () => {
   const [searchQuery, setSearchQuery] = useState('');

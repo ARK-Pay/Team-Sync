@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {  Plus, X, Loader, Edit3 } from 'lucide-react';
-import { ProgressBar } from '../common/ProgressBar';
+import ProgressBar from '../common/ProgressBar';
 import axios from 'axios';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useSetRecoilState } from 'recoil';
 import { sidebarSelection } from '../../../../../store/atoms/adminDashboardAtoms';
 
-export const ProjectRow = ({ project, isCreatedProject = false }) => {
+const ProjectRow = ({ project, isCreatedProject = false }) => {
   const setSidebar = useSetRecoilState(sidebarSelection);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -535,3 +535,7 @@ export const ProjectRow = ({ project, isCreatedProject = false }) => {
     </>
   );
 };
+
+// Export both as named and default export for maximum compatibility
+export { ProjectRow };
+export default ProjectRow;

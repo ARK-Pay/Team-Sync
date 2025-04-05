@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Search, UserPlus, Filter, MoreHorizontal, Mail, Phone, Edit, Trash2, Shield, UserCheck, Clock, User } from 'react-feather';
+import { Search, UserPlus, Filter, MoreHorizontal, Mail, Phone, Edit, Trash2, Shield, UserCheck, Clock, User } from 'lucide-react';
 
 const UsersProject = () => {
   const [users, setUsers] = useState([]);

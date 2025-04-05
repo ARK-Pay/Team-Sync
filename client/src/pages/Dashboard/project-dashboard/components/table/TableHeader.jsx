@@ -1,4 +1,4 @@
-export const TableHeader = ({ handleSort, sortBy, sortOrder }) => {
+const TableHeader = ({ handleSort, sortBy, sortOrder }) => {
   // Get current theme from localStorage
   const currentTheme = localStorage.getItem('dashboard_theme') || 'blue';
   
@@ -65,3 +65,7 @@ export const TableHeader = ({ handleSort, sortBy, sortOrder }) => {
     </tr>
   );
 };
+
+// Export both as named and default export for maximum compatibility
+export { TableHeader };
+export default TableHeader;
