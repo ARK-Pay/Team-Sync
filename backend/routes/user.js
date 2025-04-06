@@ -47,30 +47,53 @@ router.post("/signup", validateUserSignup, async (req, res) => {
         // Save the user to the database  
         await newUser.save();
 
+        console.log(`Created new user with TeamSync email: ${teamsync_email}`);
+
         // Send a success response  
         return res.status(201).json({
+            success: true,
             message: "User registered successfully.",
-            email: newUser.email
+            email: newUser.email,
+            teamsync_email: newUser.teamsync_email
         });
     } catch (error) {
         console.error("Error creating user:", error);
         return res.status(500).json({
+            success: false,
             errors: ["Internal server error."],
         });
     }
 });
 
 router.post("/signin", validateUserSignin,(req,res)=>{
-    // all checks  done create a jwt token using user's email and send it in response  
+    // all checks done create a jwt token using user's email and send it in response  
     const { email } = req.body;
-    const token = jwt.sign({ email,user_id:req.user_id }, process.env.JWT_SECRET, {
+    const user = req.user;
+    
+    // Generate TeamSync email if it doesn't exist
+    if (!user.teamsync_email) {
+        const username = email.split('@')[0].toLowerCase();
+        user.teamsync_email = `${username}@teamsync.com`;
+        // Save the updated user asynchronously
+        user.save().then(() => {
+            console.log(`Updated user's TeamSync email on signin: ${user.teamsync_email}`);
+        }).catch(err => {
+            console.error("Error updating TeamSync email:", err);
+        });
+    }
+    
+    const token = jwt.sign({ email, user_id: user.id }, process.env.JWT_SECRET, {
         expiresIn: "12h",
     });
+    
     return res.json({
+        success: true,
         message: "User signed in successfully.",
         token,
-        name:req.user.name,
-        joined_at:req.user.created_at
+        name: user.name,
+        email: user.email,
+        teamsync_email: user.teamsync_email,
+        joined_at: user.created_at
     });
 })
 
@@ -311,21 +334,34 @@ router.get("/profile", tokenValidation, async (req,res)=>{
                 errors: ["No user with this id exists."],
             });
         }
+
+        // Generate TeamSync email if it doesn't exist
+        if (!RequestedUser.teamsync_email) {
+            const username = RequestedUser.email.split('@')[0].toLowerCase();
+            RequestedUser.teamsync_email = `${username}@teamsync.com`;
+            await RequestedUser.save();
+            console.log(`Updated user's TeamSync email: ${RequestedUser.teamsync_email}`);
+        }
+
         return res.status(200).json({
-            id:RequestedUser.id,
-            name:RequestedUser.name,
-            email:RequestedUser.email,
-            // state:RequestedUser.state,
-            // created_at:RequestedUser.created_at,
-            // last_login:RequestedUser.last_login
+            success: true,
+            user: {
+                id: RequestedUser.id,
+                name: RequestedUser.name,
+                email: RequestedUser.email,
+                teamsync_email: RequestedUser.teamsync_email,
+                // state: RequestedUser.state,
+                // created_at: RequestedUser.created_at,
+                // last_login: RequestedUser.last_login
+            }
         });   
     } catch (error) {
         console.error("Error getting user:", error);
         return res.status(500).json({
+            success: false,
             errors: ["Internal server error."],
         });
     }
-
 })
 
 router.delete("/:user_id",tokenValidationAdmin,async (req,res)=>{

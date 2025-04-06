@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Star, Trash2, Archive, Printer, MoreVertical, Reply, ReplyAll, Forward, Download, Inbox } from 'lucide-react';
+import { Star, Trash2, Archive, Printer, MoreVertical, Reply, ReplyAll, Forward, Download, Inbox, FileText } from 'lucide-react';
 import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:3001';
 
 // Get auth token from localStorage
-const getAuthToken = () => localStorage.getItem('token') || 'dummy-token-for-testing';
+const getAuthToken = () => localStorage.getItem('token');
 
 const MailViewer = ({ email, onRefresh }) => {
   const [showOptions, setShowOptions] = useState(false);
@@ -29,32 +29,9 @@ const MailViewer = ({ email, onRefresh }) => {
 
   if (!email) return null;
 
-  // Direct DOM manipulation for star button (fallback)
-  const handleStarDirect = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Toggle star visually immediately
-    const starButton = e.currentTarget;
-    const isCurrentlyStarred = starButton.classList.contains('text-yellow-400');
-    
-    if (isCurrentlyStarred) {
-      starButton.classList.remove('text-yellow-400');
-      starButton.classList.add('text-gray-400');
-    } else {
-      starButton.classList.remove('text-gray-400');
-      starButton.classList.add('text-yellow-400');
-    }
-    
-    // Then try API call
-    handleStar();
-  };
-
+  // Handle star toggle
   const handleStar = async () => {
     try {
-      // Update UI immediately (optimistic update)
-      const updatedEmail = { ...email, isStarred: !email.isStarred };
-      
       setLoading(true);
       setActionType('star');
       console.log('Starring email:', email._id, 'Current starred status:', email.isStarred);
@@ -63,7 +40,7 @@ const MailViewer = ({ email, onRefresh }) => {
       
       const response = await axios.put(
         `${API_BASE_URL}/mail/${email._id}/star`,
-        {},
+        { isStarred: !email.isStarred },
         {
           headers: {
             Authorization: `Bearer ${token}`
@@ -92,21 +69,7 @@ const MailViewer = ({ email, onRefresh }) => {
     }
   };
 
-  // Direct DOM manipulation for print button (fallback)
-  const handlePrintDirect = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Visual feedback
-    const printButton = e.currentTarget;
-    printButton.classList.add('bg-gray-200');
-    setTimeout(() => {
-      printButton.classList.remove('bg-gray-200');
-    }, 200);
-    
-    handlePrint();
-  };
-
+  // Handle print
   const handlePrint = () => {
     console.log('Printing email:', email.subject);
     
@@ -115,95 +78,63 @@ const MailViewer = ({ email, onRefresh }) => {
         <head>
           <title>${email.subject || '(No Subject)'}</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
-            .header { margin-bottom: 20px; }
-            .metadata { color: #666; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
-            .content { line-height: 1.6; }
-            @media print {
-              body { padding: 0; }
-              button { display: none; }
+            body {
+              font-family: Arial, sans-serif;
+              margin: 20px;
+              line-height: 1.5;
+            }
+            .header {
+              border-bottom: 1px solid #eee;
+              padding-bottom: 10px;
+              margin-bottom: 20px;
+            }
+            .subject {
+              font-size: 18px;
+              font-weight: bold;
+              margin-bottom: 10px;
+            }
+            .meta {
+              color: #666;
+              font-size: 14px;
+              margin-bottom: 5px;
+            }
+            .body {
+              white-space: pre-wrap;
             }
           </style>
         </head>
         <body>
           <div class="header">
-            <h1>${email.subject || '(No Subject)'}</h1>
+            <div class="subject">${email.subject || '(No Subject)'}</div>
+            <div class="meta">From: ${email.senderName} &lt;${email.senderEmail}&gt;</div>
+            <div class="meta">To: ${email.recipientNames?.join(', ') || 'Recipients'}</div>
+            <div class="meta">Date: ${new Date(email.timestamp).toLocaleString()}</div>
           </div>
-          <div class="metadata">
-            <p><strong>From:</strong> ${email.senderName} (${email.senderEmail})</p>
-            <p><strong>To:</strong> ${email.recipientNames?.join(', ') || 'No recipients'}</p>
-            <p><strong>Date:</strong> ${new Date(email.timestamp).toLocaleString()}</p>
-          </div>
-          <div class="content">
-            ${email.body || ''}
-          </div>
+          <div class="body">${email.body}</div>
         </body>
       </html>
     `;
     
-    // Method 1: Using window.open
-    try {
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(printContent);
-        printWindow.document.close();
-        
-        // Try to print after a short delay to ensure content is loaded
-        setTimeout(() => {
-          try {
-            printWindow.print();
-            setTimeout(() => printWindow.close(), 500);
-          } catch (e) {
-            console.error('Print error:', e);
-            alert('Could not print. Please try again.');
-          }
-        }, 300);
-      } else {
-        // Fallback if popup is blocked
-        alert('Please allow popups to print emails');
-      }
-    } catch (e) {
-      console.error('Print window error:', e);
-      
-      // Method 2: Direct print using iframe
-      try {
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-        
-        iframe.contentDocument.write(printContent);
-        iframe.contentDocument.close();
-        
-        setTimeout(() => {
-          try {
-            iframe.contentWindow.print();
-            setTimeout(() => document.body.removeChild(iframe), 500);
-          } catch (e2) {
-            console.error('iframe print error:', e2);
-            alert('Could not print. Please try again.');
-          }
-        }, 300);
-      } catch (e2) {
-        console.error('iframe error:', e2);
-        alert('Could not print. Please try again.');
-      }
-    }
-  };
-
-  // Direct DOM manipulation for options button (fallback)
-  const handleOptionsDirect = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.focus();
     
-    // Toggle options menu visually
-    setShowOptions(!showOptions);
+    // Print after a short delay to ensure content is loaded
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
   };
 
+  // Handle move email to folder
   const handleMove = async (targetFolder) => {
     try {
       setLoading(true);
       setActionType('move');
-      console.log('Moving email to:', targetFolder);
+      setShowOptions(false);
+      
+      console.log(`Moving email ${email._id} to ${targetFolder}`);
       
       const token = getAuthToken();
       
@@ -217,36 +148,34 @@ const MailViewer = ({ email, onRefresh }) => {
         }
       );
       
-      console.log('Move response:', response.data);
+      console.log('Move email response:', response.data);
       
       if (response.data.success) {
-        console.log('Refreshing after move');
+        console.log(`Email moved to ${targetFolder} successfully`);
         if (onRefresh) {
           onRefresh();
         }
       } else {
-        console.error('Failed to move email:', response.data.message);
+        console.error(`Failed to move email to ${targetFolder}:`, response.data.message);
         alert(`Failed to move email to ${targetFolder}. Please try again.`);
       }
     } catch (error) {
-      console.error('Error moving email:', error);
+      console.error(`Error moving email to ${targetFolder}:`, error);
       alert(`Failed to move email to ${targetFolder}. Please try again.`);
     } finally {
       setLoading(false);
       setActionType(null);
-      setShowOptions(false);
     }
   };
 
+  // Handle delete email
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to permanently delete this email? This action cannot be undone.')) {
-      return;
-    }
-    
     try {
       setLoading(true);
       setActionType('delete');
-      console.log('Permanently deleting email:', email._id);
+      setShowOptions(false);
+      
+      console.log('Deleting email:', email._id);
       
       const token = getAuthToken();
       
@@ -259,13 +188,16 @@ const MailViewer = ({ email, onRefresh }) => {
         }
       );
       
-      console.log('Delete response:', response.data);
+      console.log('Delete email response:', response.data);
       
       if (response.data.success) {
+        console.log('Email deleted successfully');
         if (onRefresh) {
-          console.log('Refreshing after delete');
           onRefresh();
         }
+      } else {
+        console.error('Failed to delete email:', response.data.message);
+        alert('Failed to delete email. Please try again.');
       }
     } catch (error) {
       console.error('Error deleting email:', error);
@@ -273,27 +205,35 @@ const MailViewer = ({ email, onRefresh }) => {
     } finally {
       setLoading(false);
       setActionType(null);
-      setShowOptions(false);
     }
   };
 
+  // Handle reply
   const handleReply = () => {
-    alert('Reply functionality would be implemented here');
+    alert('Reply functionality is not implemented yet.');
   };
 
+  // Handle reply all
   const handleReplyAll = () => {
-    alert('Reply All functionality would be implemented here');
+    alert('Reply All functionality is not implemented yet.');
   };
 
+  // Handle forward
   const handleForward = () => {
-    alert('Forward functionality would be implemented here');
+    alert('Forward functionality is not implemented yet.');
   };
 
+  // Handle mark as read/unread
   const handleMarkAsRead = async () => {
     try {
       setLoading(true);
       setActionType('read');
+      setShowOptions(false);
+      
+      console.log(`Marking email ${email._id} as ${email.isRead ? 'unread' : 'read'}`);
+      
       const token = getAuthToken();
+      
       const response = await axios.put(
         `${API_BASE_URL}/mail/${email._id}/read`,
         { isRead: !email.isRead },
@@ -303,12 +243,21 @@ const MailViewer = ({ email, onRefresh }) => {
           }
         }
       );
+      
+      console.log('Mark as read response:', response.data);
+      
       if (response.data.success) {
-        if (onRefresh) onRefresh();
+        console.log(`Email marked as ${email.isRead ? 'unread' : 'read'} successfully`);
+        if (onRefresh) {
+          onRefresh();
+        }
+      } else {
+        console.error(`Failed to mark email as ${email.isRead ? 'unread' : 'read'}:`, response.data.message);
+        alert(`Failed to mark email as ${email.isRead ? 'unread' : 'read'}. Please try again.`);
       }
     } catch (error) {
-      console.error('Error updating read status:', error);
-      alert('Failed to update read status. Please try again.');
+      console.error(`Error marking email as ${email.isRead ? 'unread' : 'read'}:`, error);
+      alert(`Failed to mark email as ${email.isRead ? 'unread' : 'read'}. Please try again.`);
     } finally {
       setLoading(false);
       setActionType(null);
@@ -316,119 +265,127 @@ const MailViewer = ({ email, onRefresh }) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg shadow p-6">
+    <div className="h-full flex flex-col p-6 bg-white overflow-auto">
       {/* Email Header */}
-      <div className="flex flex-col mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-2xl font-semibold">{email.subject || '(No Subject)'}</h2>
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-xl font-semibold text-gray-900">{email.subject || '(No Subject)'}</h1>
+          
           <div className="flex items-center space-x-2">
             {/* Star Button */}
             <button
-              onClick={handleStarDirect}
+              onClick={handleStar}
               disabled={loading && actionType === 'star'}
-              className={`p-2 rounded-full hover:bg-gray-100 transition-colors ${
-                email.isStarred ? 'text-yellow-400' : 'text-gray-400'
+              className={`p-2 rounded-full ${
+                email.isStarred ? 'text-yellow-400' : 'text-gray-400 hover:text-gray-600'
               } ${loading && actionType === 'star' ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={email.isStarred ? 'Unstar' : 'Star'}
             >
               <Star className="h-5 w-5" />
             </button>
-
+            
             {/* Print Button */}
             <button
-              onClick={handlePrintDirect}
+              onClick={handlePrint}
               disabled={loading}
-              className={`p-2 rounded-full hover:bg-gray-100 text-gray-600 transition-colors ${
+              className={`p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 ${
                 loading ? 'opacity-50 cursor-not-allowed' : ''
               }`}
-              title="Print"
             >
               <Printer className="h-5 w-5" />
             </button>
-
+            
             {/* Options Menu */}
             <div className="relative" ref={optionsRef}>
               <button
                 onClick={() => setShowOptions(!showOptions)}
                 disabled={loading}
-                className={`p-2 rounded-full hover:bg-gray-100 text-gray-600 transition-colors ${
+                className={`p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 ${
                   loading ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
-                title="More options"
               >
                 <MoreVertical className="h-5 w-5" />
               </button>
-
-              {/* Dropdown Menu */}
+              
+              {/* Options Dropdown */}
               {showOptions && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 py-1">
-                  {email.folder === 'trash' ? (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 py-1 border border-gray-200">
+                  {email.folder !== 'archived' && (
+                    <button
+                      onClick={() => handleMove('archived')}
+                      disabled={loading}
+                      className={`flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${
+                        loading && actionType === 'move' ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      <Archive className="h-4 w-4 mr-2" />
+                      Archive
+                    </button>
+                  )}
+                  
+                  {email.folder === 'archived' && (
+                    <button
+                      onClick={() => handleMove('inbox')}
+                      disabled={loading}
+                      className={`flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${
+                        loading && actionType === 'move' ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      <Inbox className="h-4 w-4 mr-2" />
+                      Move to Inbox
+                    </button>
+                  )}
+                  
+                  {email.folder !== 'trash' && (
+                    <button
+                      onClick={() => handleMove('trash')}
+                      disabled={loading}
+                      className={`flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100 ${
+                        loading && actionType === 'move' ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Move to Trash
+                    </button>
+                  )}
+                  
+                  {email.folder === 'trash' && (
                     <>
-                      <button
-                        onClick={() => handleMove('inbox')}
-                        disabled={loading}
-                        className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      >
-                        <Inbox className="h-4 w-4 mr-2" />
-                        Restore to Inbox
-                      </button>
                       <button
                         onClick={handleDelete}
                         disabled={loading}
-                        className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                        className={`flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100 ${
+                          loading && actionType === 'delete' ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
                         Delete Permanently
                       </button>
-                    </>
-                  ) : email.folder === 'archived' ? (
-                    <>
                       <button
                         onClick={() => handleMove('inbox')}
                         disabled={loading}
-                        className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        className={`flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${
+                          loading && actionType === 'move' ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
                       >
                         <Inbox className="h-4 w-4 mr-2" />
-                        Unarchive to Inbox
-                      </button>
-                      <button
-                        onClick={() => handleMove('trash')}
-                        disabled={loading}
-                        className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Move to Trash
+                        Restore to Inbox
                       </button>
                     </>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => handleMove('archived')}
-                        disabled={loading}
-                        className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      >
-                        <Archive className="h-4 w-4 mr-2" />
-                        Archive
-                      </button>
-                      <button
-                        onClick={() => handleMove('trash')}
-                        disabled={loading}
-                        className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Move to Trash
-                      </button>
-                      <button
-                        onClick={handleMarkAsRead}
-                        disabled={loading}
-                        className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      >
-                        <span className="h-4 w-4 mr-2 flex items-center justify-center">
-                          {email.isRead ? '📪' : '📬'}
-                        </span>
-                        Mark as {email.isRead ? 'unread' : 'read'}
-                      </button>
-                    </>
+                  )}
+                  
+                  {email.folder !== 'drafts' && (
+                    <button
+                      onClick={handleMarkAsRead}
+                      disabled={loading}
+                      className={`flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${
+                        loading && actionType === 'read' ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      <span className="h-4 w-4 mr-2 flex items-center justify-center">
+                        {email.isRead ? '📪' : '📬'}
+                      </span>
+                      Mark as {email.isRead ? 'unread' : 'read'}
+                    </button>
                   )}
                 </div>
               )}
@@ -438,27 +395,43 @@ const MailViewer = ({ email, onRefresh }) => {
 
         {/* Action Buttons */}
         <div className="flex items-center space-x-2 mb-4">
-          <button
-            onClick={handleReply}
-            className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded flex items-center text-sm"
-          >
-            <Reply className="h-4 w-4 mr-1" />
-            Reply
-          </button>
-          <button
-            onClick={handleReplyAll}
-            className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded flex items-center text-sm"
-          >
-            <ReplyAll className="h-4 w-4 mr-1" />
-            Reply All
-          </button>
-          <button
-            onClick={handleForward}
-            className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded flex items-center text-sm"
-          >
-            <Forward className="h-4 w-4 mr-1" />
-            Forward
-          </button>
+          {email.folder === 'drafts' ? (
+            <button
+              onClick={() => {
+                if (typeof window.editDraft === 'function') {
+                  window.editDraft(email);
+                }
+              }}
+              className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded flex items-center text-sm"
+            >
+              <FileText className="h-4 w-4 mr-1" />
+              Edit Draft
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleReply}
+                className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded flex items-center text-sm"
+              >
+                <Reply className="h-4 w-4 mr-1" />
+                Reply
+              </button>
+              <button
+                onClick={handleReplyAll}
+                className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded flex items-center text-sm"
+              >
+                <ReplyAll className="h-4 w-4 mr-1" />
+                Reply All
+              </button>
+              <button
+                onClick={handleForward}
+                className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded flex items-center text-sm"
+              >
+                <Forward className="h-4 w-4 mr-1" />
+                Forward
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -482,7 +455,7 @@ const MailViewer = ({ email, onRefresh }) => {
 
       {/* Email Body */}
       <div className="flex-grow overflow-auto prose max-w-none">
-        <div dangerouslySetInnerHTML={{ __html: email.body || '' }} />
+        <div className="whitespace-pre-wrap">{email.body || ''}</div>
       </div>
 
       {/* Attachments */}

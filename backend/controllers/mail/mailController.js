@@ -1,5 +1,7 @@
 const { User } = require('../../db/index');
 const Mail = require('../../models/mail/Mail');
+const bcrypt = require('bcrypt');
+const { v4: uuidv4 } = require('uuid');
 
 // Helper function to generate TeamSync email
 const generateTeamSyncEmail = (email) => {
@@ -12,6 +14,45 @@ const findUserByTeamSyncEmail = async (email) => {
   return await User.findOne({ teamsync_email: email });
 };
 
+// Helper function to create a user with TeamSync email if they don't exist
+const createUserIfNotExists = async (teamsyncEmail) => {
+  try {
+    // Check if user already exists
+    const existingUser = await User.findOne({ teamsync_email: teamsyncEmail });
+    if (existingUser) {
+      return existingUser;
+    }
+
+    // Extract username from email
+    const username = teamsyncEmail.split('@')[0];
+    
+    // Create a random password
+    const saltRounds = 10;
+    const password_hash = await bcrypt.hash(`password_${Math.floor(Math.random() * 10000)}`, saltRounds);
+    
+    // Create new user
+    const newUser = new User({
+      name: username.charAt(0).toUpperCase() + username.slice(1), // Capitalize first letter
+      email: `${username}@example.com`,
+      teamsync_email: teamsyncEmail,
+      password_hash,
+      state: 'verified' // Set to verified so it can be used immediately
+    });
+    
+    await newUser.save();
+    console.log(`Created new user for email ${teamsyncEmail}:`, {
+      id: newUser.id,
+      name: newUser.name,
+      teamsync_email: newUser.teamsync_email
+    });
+    
+    return newUser;
+  } catch (error) {
+    console.error(`Error creating user for ${teamsyncEmail}:`, error);
+    return null;
+  }
+};
+
 // Controller for mail operations
 const mailController = {
   // Get all emails for a user based on folder
@@ -19,6 +60,8 @@ const mailController = {
     try {
       const { id: userId } = req.user;
       const { folder = 'inbox' } = req.query;
+      
+      console.log(`Getting emails for user: ${userId} in folder: ${folder}`);
       
       let query = {};
       
@@ -57,7 +100,7 @@ const mailController = {
         };
       }
       
-      console.log(`Fetching emails for folder: ${folder} with query:`, JSON.stringify(query));
+      console.log(`Query for folder ${folder}:`, JSON.stringify(query));
       
       const emails = await Mail.find(query)
         .sort({ timestamp: -1 })
@@ -84,6 +127,8 @@ const mailController = {
     try {
       const { id: userId } = req.user;
       const { emailId } = req.params;
+      
+      console.log(`Getting email with ID: ${emailId} for user: ${userId}`);
       
       const email = await Mail.findOne({
         _id: emailId,
@@ -123,21 +168,12 @@ const mailController = {
   sendEmail: async (req, res) => {
     try {
       const { id: senderId } = req.user;
-      const { to, cc, bcc, subject, body, attachments } = req.body;
+      const { to, cc, bcc, subject, body, attachments, draftId } = req.body;
 
-      // Get sender details
-      const sender = await User.findOne({ id: senderId });
-      if (!sender) {
-        return res.status(404).json({ 
-          success: false,
-          message: 'Sender not found' 
-        });
-      }
+      console.log(`Sending email from user: ${senderId} to:`, to);
+      console.log('Request body:', req.body);
 
-      // Get sender's TeamSync email
-      const senderEmail = generateTeamSyncEmail(sender.email);
-
-      // Validate basic recipient format
+      // Validate required fields
       if (!to || !Array.isArray(to) || to.length === 0) {
         return res.status(400).json({ 
           success: false,
@@ -145,64 +181,158 @@ const mailController = {
         });
       }
 
-      // Validate all recipients have @teamsync.com domain
-      const invalidRecipients = to.filter(email => !email.endsWith('@teamsync.com'));
-      if (invalidRecipients.length > 0) {
-        return res.status(400).json({
+      // Get sender details - using findOne with id field instead of findById
+      const sender = await User.findOne({ id: senderId });
+      if (!sender) {
+        console.error(`Sender not found with id: ${senderId}`);
+        return res.status(404).json({ 
           success: false,
-          message: `Invalid email domain for: ${invalidRecipients.join(', ')}. All recipients must have @teamsync.com domain.`
+          message: 'Sender not found' 
         });
       }
 
-      // Create sent mail with all recipients
-      const sentMail = new Mail({
-        senderId: sender.id,
-        senderName: sender.name,
-        senderEmail: senderEmail,
-        recipients: to,
-        recipientNames: to.map(email => email.split('@')[0]), // Use email username as name
-        cc: cc || [],
-        bcc: bcc || [],
-        subject,
-        body,
-        hasAttachments: attachments && attachments.length > 0,
-        folder: 'sent',
-        attachments: attachments || [],
-        timestamp: new Date()
+      console.log('Sender found:', { 
+        id: sender.id, 
+        name: sender.name, 
+        email: sender.email,
+        teamsync_email: sender.teamsync_email
       });
 
-      await sentMail.save();
+      // Get sender's TeamSync email
+      const senderEmail = sender.teamsync_email || generateTeamSyncEmail(sender.email);
+      
+      // Update sender's TeamSync email if it doesn't exist
+      if (!sender.teamsync_email) {
+        sender.teamsync_email = senderEmail;
+        await sender.save();
+        console.log(`Updated sender's TeamSync email: ${senderEmail}`);
+      }
 
-      // Create inbox copies for all recipients
-      await Promise.all(to.map(async (recipientEmail) => {
-        const recipientCopy = new Mail({
-          senderId: sender.id,
-          senderName: sender.name,
+      // Process recipients
+      const recipientIds = [];
+      const recipientNames = [];
+      const invalidRecipients = [];
+      
+      for (const recipientEmail of to) {
+        // Validate email format
+        if (!recipientEmail.endsWith('@teamsync.com')) {
+          invalidRecipients.push(recipientEmail);
+          console.log(`Invalid recipient email format: ${recipientEmail}`);
+          continue;
+        }
+        
+        try {
+          // Find recipient by TeamSync email or create if not exists
+          let recipient = await findUserByTeamSyncEmail(recipientEmail);
+          
+          // If recipient doesn't exist, create a new user
+          if (!recipient) {
+            console.log(`Recipient not found for email: ${recipientEmail}. Creating new user...`);
+            recipient = await createUserIfNotExists(recipientEmail);
+            
+            if (!recipient) {
+              console.log(`Failed to create user for email: ${recipientEmail}`);
+              invalidRecipients.push(recipientEmail);
+              continue;
+            }
+          }
+          
+          console.log(`Recipient found/created: ${recipient.name} (${recipient.id})`);
+          recipientIds.push(recipient.id); // Use the UUID id field, not _id
+          recipientNames.push(recipient.name || recipient.username || 'Unknown User');
+        } catch (err) {
+          console.error(`Error finding/creating recipient for email ${recipientEmail}:`, err);
+          invalidRecipients.push(recipientEmail);
+        }
+      }
+      
+      if (recipientIds.length === 0) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'No valid recipients found',
+          invalidRecipients: invalidRecipients
+        });
+      }
+
+      // If there were some invalid recipients but at least one valid recipient
+      const hasInvalidRecipients = invalidRecipients.length > 0;
+
+      try {
+        // Create the email
+        const email = new Mail({
+          senderId: sender.id, // Use the UUID id field, not _id
+          senderName: sender.name || sender.username,
           senderEmail: senderEmail,
-          recipients: [recipientEmail],
-          recipientNames: [recipientEmail.split('@')[0]],
+          recipients: recipientIds,
+          recipientNames: recipientNames,
           cc: cc || [],
           bcc: bcc || [],
-          subject,
-          body,
+          subject: subject || '(No Subject)',
+          body: body || '',
           hasAttachments: attachments && attachments.length > 0,
-          folder: 'inbox',
           attachments: attachments || [],
+          folder: 'sent',
           timestamp: new Date()
         });
-        await recipientCopy.save();
-      }));
 
-      return res.status(201).json({ 
-        success: true,
-        message: 'Email sent successfully',
-        data: sentMail
-      });
+        await email.save();
+        console.log(`Email saved with ID: ${email._id}`);
+
+        // Create copies for each recipient's inbox
+        for (let i = 0; i < recipientIds.length; i++) {
+          const inboxCopy = new Mail({
+            senderId: sender.id, // Use the UUID id field, not _id
+            senderName: sender.name || sender.username,
+            senderEmail: senderEmail,
+            recipients: [recipientIds[i]],
+            recipientNames: [recipientNames[i]],
+            cc: cc || [],
+            bcc: bcc || [],
+            subject: subject || '(No Subject)',
+            body: body || '',
+            hasAttachments: attachments && attachments.length > 0,
+            attachments: attachments || [],
+            folder: 'inbox',
+            isRead: false,
+            timestamp: new Date()
+          });
+          
+          await inboxCopy.save();
+          console.log(`Inbox copy created for recipient: ${recipientIds[i]}`);
+        }
+
+        // Delete the draft if this was sent from a draft
+        if (draftId) {
+          try {
+            await Mail.findByIdAndDelete(draftId);
+            console.log(`Draft deleted: ${draftId}`);
+          } catch (err) {
+            console.error(`Error deleting draft ${draftId}:`, err);
+            // Continue even if draft deletion fails
+          }
+        }
+
+        return res.status(201).json({
+          success: true,
+          message: hasInvalidRecipients 
+            ? 'Email sent successfully to valid recipients, but some recipients were invalid' 
+            : 'Email sent successfully',
+          data: email,
+          invalidRecipients: hasInvalidRecipients ? invalidRecipients : undefined
+        });
+      } catch (err) {
+        console.error('Error creating or saving email:', err);
+        return res.status(500).json({
+          success: false,
+          message: 'Error creating or saving email',
+          error: err.message
+        });
+      }
     } catch (error) {
       console.error('Error sending email:', error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
-        message: 'Error sending email',
+        message: 'Failed to send email',
         error: error.message
       });
     }
@@ -212,8 +342,10 @@ const mailController = {
   saveDraft: async (req, res) => {
     try {
       const { id: senderId } = req.user;
-      const { to, cc, bcc, subject, body, attachments } = req.body;
-
+      const { to, cc, bcc, subject, body, attachments, draftId } = req.body;
+      
+      console.log(`Saving draft for user: ${senderId}`);
+      
       // Get sender details
       const sender = await User.findOne({ id: senderId });
       if (!sender) {
@@ -222,39 +354,89 @@ const mailController = {
           message: 'Sender not found' 
         });
       }
-
+      
       // Get sender's TeamSync email
-      const senderEmail = generateTeamSyncEmail(sender.email);
-
-      // Create draft mail with any recipients, regardless of whether they exist
-      const draftMail = new Mail({
-        senderId: sender.id,
-        senderName: sender.name,
-        senderEmail: senderEmail,
-        recipients: to ? to.map(email => email) : [],
-        recipientNames: to ? to.map(email => email.split('@')[0]) : [], // Use email username as name
-        cc: cc || [],
-        bcc: bcc || [],
-        subject: subject || '(No Subject)',
-        body: body || '',
-        hasAttachments: attachments && attachments.length > 0,
-        folder: 'drafts',
-        attachments: attachments || [],
-        timestamp: new Date()
-      });
-
-      // Save draft without validating recipients
-      await draftMail.save();
-      return res.status(201).json({ 
+      const senderEmail = sender.teamsync_email || generateTeamSyncEmail(sender.email);
+      
+      // Process recipients if provided
+      let recipientIds = [];
+      let recipientNames = [];
+      
+      if (to && Array.isArray(to) && to.length > 0) {
+        for (const recipientEmail of to) {
+          // Find recipient by TeamSync email
+          const recipient = await findUserByTeamSyncEmail(recipientEmail);
+          
+          if (recipient) {
+            recipientIds.push(recipient.id);
+            recipientNames.push(recipient.name || recipient.username || 'Unknown User');
+          }
+        }
+      }
+      
+      // Create or update the draft
+      let draft;
+      
+      if (draftId) {
+        // Update existing draft
+        draft = await Mail.findOne({
+          _id: draftId,
+          senderId: senderId,
+          folder: 'drafts'
+        });
+        
+        if (!draft) {
+          return res.status(404).json({
+            success: false,
+            message: 'Draft not found'
+          });
+        }
+        
+        // Update draft fields
+        draft.recipients = recipientIds;
+        draft.recipientNames = recipientNames;
+        draft.cc = cc || [];
+        draft.bcc = bcc || [];
+        draft.subject = subject || '(No Subject)';
+        draft.body = body || '';
+        draft.hasAttachments = attachments && attachments.length > 0;
+        draft.attachments = attachments || [];
+        draft.timestamp = new Date();
+        
+        await draft.save();
+        console.log(`Draft updated with ID: ${draft._id}`);
+      } else {
+        // Create new draft
+        draft = new Mail({
+          senderId: sender.id,
+          senderName: sender.name || sender.username,
+          senderEmail: senderEmail,
+          recipients: recipientIds,
+          recipientNames: recipientNames,
+          cc: cc || [],
+          bcc: bcc || [],
+          subject: subject || '(No Subject)',
+          body: body || '',
+          hasAttachments: attachments && attachments.length > 0,
+          attachments: attachments || [],
+          folder: 'drafts',
+          timestamp: new Date()
+        });
+        
+        await draft.save();
+        console.log(`New draft created with ID: ${draft._id}`);
+      }
+      
+      return res.status(200).json({
         success: true,
         message: 'Draft saved successfully',
-        data: draftMail
+        data: draft
       });
     } catch (error) {
       console.error('Error saving draft:', error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
-        message: 'Error saving draft',
+        message: 'Failed to save draft',
         error: error.message
       });
     }
@@ -264,6 +446,8 @@ const mailController = {
   getStarredEmails: async (req, res) => {
     try {
       const { id: userId } = req.user;
+      
+      console.log(`Getting starred emails for user: ${userId}`);
       
       const emails = await Mail.find({
         $and: [
@@ -278,29 +462,32 @@ const mailController = {
       })
       .sort({ timestamp: -1 })
       .lean();
-
+      
+      console.log(`Found ${emails.length} starred emails`);
+      
       return res.status(200).json({
         success: true,
         data: emails
       });
     } catch (error) {
       console.error('Error fetching starred emails:', error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
-        message: 'Error fetching starred emails',
+        message: 'Failed to fetch starred emails',
         error: error.message
       });
     }
   },
-
+  
   // Toggle star status
   toggleStarStatus: async (req, res) => {
     try {
       const { id: userId } = req.user;
       const { emailId } = req.params;
-
-      console.log(`Toggling star status for email: ${emailId} by user: ${userId}`);
-
+      const { isStarred } = req.body;
+      
+      console.log(`Toggling star status for email: ${emailId}, user: ${userId}`);
+      
       const email = await Mail.findOne({
         _id: emailId,
         $or: [
@@ -308,21 +495,18 @@ const mailController = {
           { senderId: userId }
         ]
       });
-
+      
       if (!email) {
-        console.log(`Email not found: ${emailId}`);
         return res.status(404).json({
           success: false,
           message: 'Email not found'
         });
       }
-
-      // Toggle star status
-      email.isStarred = !email.isStarred;
+      
+      // Toggle star status or set to provided value
+      email.isStarred = isStarred !== undefined ? isStarred : !email.isStarred;
       await email.save();
       
-      console.log(`Star status toggled to: ${email.isStarred} for email: ${emailId}`);
-
       return res.status(200).json({
         success: true,
         message: `Email ${email.isStarred ? 'starred' : 'unstarred'} successfully`,
@@ -332,12 +516,12 @@ const mailController = {
       console.error('Error toggling star status:', error);
       return res.status(500).json({
         success: false,
-        message: 'Error toggling star status',
+        message: 'Failed to toggle star status',
         error: error.message
       });
     }
   },
-
+  
   // Move email to a different folder
   moveEmail: async (req, res) => {
     try {
@@ -345,15 +529,17 @@ const mailController = {
       const { emailId } = req.params;
       const { targetFolder } = req.body;
       
-      const validFolders = ['inbox', 'sent', 'drafts', 'trash', 'archived'];
+      console.log(`Moving email: ${emailId} to folder: ${targetFolder} for user: ${userId}`);
       
+      // Validate target folder
+      const validFolders = ['inbox', 'sent', 'drafts', 'trash', 'archived'];
       if (!validFolders.includes(targetFolder)) {
         return res.status(400).json({
           success: false,
           message: 'Invalid target folder'
         });
       }
-
+      
       const email = await Mail.findOne({
         _id: emailId,
         $or: [
@@ -361,17 +547,17 @@ const mailController = {
           { senderId: userId }
         ]
       });
-
+      
       if (!email) {
         return res.status(404).json({
           success: false,
           message: 'Email not found'
         });
       }
-
+      
       email.folder = targetFolder;
       await email.save();
-
+      
       return res.status(200).json({
         success: true,
         message: `Email moved to ${targetFolder} successfully`,
@@ -392,6 +578,8 @@ const mailController = {
     try {
       const { id: userId } = req.user;
       const { emailId } = req.params;
+      
+      console.log(`Deleting email: ${emailId} for user: ${userId}`);
       
       const email = await Mail.findOne({
         _id: emailId,
@@ -444,6 +632,8 @@ const mailController = {
       const { emailId } = req.params;
       const { isRead } = req.body;
       
+      console.log(`Toggling read status for email: ${emailId}, user: ${userId}, isRead: ${isRead}`);
+      
       const email = await Mail.findOne({
         _id: emailId,
         $or: [
@@ -475,7 +665,51 @@ const mailController = {
         error: error.message
       });
     }
-  }
+  },
+  
+  // Special handler for moving drafts to trash (to fix the 404 issue)
+  moveDraftToTrash: async (req, res) => {
+    try {
+      const { id: userId } = req.user;
+      const { emailId } = req.body;
+      
+      console.log(`Moving draft to trash: ${emailId} by user: ${userId}`);
+      
+      // Find the draft email
+      const email = await Mail.findOne({
+        _id: emailId,
+        senderId: userId,
+        folder: 'drafts'
+      });
+
+      if (!email) {
+        console.log(`Draft email not found: ${emailId}`);
+        return res.status(404).json({
+          success: false,
+          message: 'Draft email not found'
+        });
+      }
+
+      // Move the email to trash
+      email.folder = 'trash';
+      await email.save();
+
+      console.log(`Draft moved to trash successfully: ${emailId}`);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Draft moved to trash successfully',
+        data: email
+      });
+    } catch (error) {
+      console.error('Error moving draft to trash:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Error moving draft to trash',
+        error: error.message
+      });
+    }
+  },
 };
 
 module.exports = mailController;

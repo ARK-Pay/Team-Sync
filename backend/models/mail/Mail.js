@@ -11,18 +11,17 @@ const attachmentSchema = new mongoose.Schema({
 
 // Schema for mail messages
 const mailSchema = new mongoose.Schema({
-  _id: {
-    type: String,
-    default: uuidv4
-  },
+  // Use MongoDB's default _id field for Mail documents
   senderId: { 
     type: String,
-    required: true 
+    required: true,
+    ref: 'User'
   },
   senderName: { type: String, required: true },
   senderEmail: { type: String, required: true },
   recipients: [{ 
-    type: String
+    type: String,
+    ref: 'User'
   }],
   recipientNames: [{ type: String }],
   cc: [{ type: String }],

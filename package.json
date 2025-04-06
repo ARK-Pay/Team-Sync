@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "react-feather": "^2.0.10"
+    "react-feather": "^2.0.10",
+    "react-markdown": "^10.1.0"
   }
 }

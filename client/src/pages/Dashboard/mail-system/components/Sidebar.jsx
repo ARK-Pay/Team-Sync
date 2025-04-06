@@ -43,11 +43,6 @@ const Sidebar = ({ currentFolder, onFolderChange, onComposeClick }) => {
               >
                 <span className="mr-3">{folder.icon}</span>
                 <span>{folder.name}</span>
-                {folder.id === 'inbox' && (
-                  <span className="ml-auto bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded-full">
-                    2
-                  </span>
-                )}
               </button>
             </li>
           ))}
@@ -72,17 +67,6 @@ const Sidebar = ({ currentFolder, onFolderChange, onComposeClick }) => {
             </li>
           ))}
         </ul>
-      </div>
-
-      {/* Storage Usage */}
-      <div className="mt-auto pt-4 border-t border-gray-200">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-gray-500">Storage</span>
-          <span className="text-xs font-medium">35% of 15 GB</span>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-1.5">
-          <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: '35%' }}></div>
-        </div>
       </div>
     </div>
   );

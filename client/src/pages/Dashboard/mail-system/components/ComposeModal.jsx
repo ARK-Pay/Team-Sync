@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, Paperclip, Minimize2, Maximize2 } from 'lucide-react';
 
-const ComposeModal = ({ onClose, onSend, onSaveDraft }) => {
+const ComposeModal = ({ onClose, onSend, onSaveDraft, draftData = null, userTeamSyncEmail = '' }) => {
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
   const [bcc, setBcc] = useState('');
@@ -10,7 +10,74 @@ const ComposeModal = ({ onClose, onSend, onSaveDraft }) => {
   const [attachments, setAttachments] = useState([]);
   const [isMinimized, setIsMinimized] = useState(false);
   const [showCcBcc, setShowCcBcc] = useState(false);
+  const [draftId, setDraftId] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [fromEmail, setFromEmail] = useState('');
   const fileInputRef = useRef(null);
+  const modalRef = useRef(null);
+
+  // Initialize form with draft data if provided
+  useEffect(() => {
+    if (draftData) {
+      setDraftId(draftData._id);
+      
+      // Handle recipients - convert IDs to emails if needed
+      if (draftData.recipients && draftData.recipients.length > 0) {
+        if (draftData.recipientEmails && draftData.recipientEmails.length > 0) {
+          // Use recipient emails directly if available
+          setTo(draftData.recipientEmails.join(', '));
+        } else if (draftData.recipientNames && draftData.recipientNames.length === draftData.recipients.length) {
+          // Use recipient names to construct emails
+          const recipientEmails = draftData.recipientNames.map(name => {
+            const username = name.toLowerCase().replace(/\s+/g, '');
+            return `${username}@teamsync.com`;
+          });
+          setTo(recipientEmails.join(', '));
+        } else {
+          // Just use empty to field as fallback
+          setTo('');
+        }
+      }
+      
+      setCc(draftData.cc ? draftData.cc.join(', ') : '');
+      setBcc(draftData.bcc ? draftData.bcc.join(', ') : '');
+      setSubject(draftData.subject || '');
+      setBody(draftData.body || '');
+      setAttachments(draftData.attachments || []);
+      
+      // Show CC/BCC fields if they have content
+      if ((draftData.cc && draftData.cc.length > 0) || 
+          (draftData.bcc && draftData.bcc.length > 0)) {
+        setShowCcBcc(true);
+      }
+    }
+  }, [draftData]);
+
+  // Set the user's TeamSync email when it becomes available
+  useEffect(() => {
+    if (userTeamSyncEmail) {
+      console.log('Setting from email in ComposeModal:', userTeamSyncEmail);
+      setFromEmail(userTeamSyncEmail);
+    }
+  }, [userTeamSyncEmail]);
+
+  // Add click outside handler to close error/success messages
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (error || successMessage) {
+        setError('');
+        setSuccessMessage('');
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [error, successMessage]);
 
   // Handle file selection
   const handleFileSelect = (e) => {
@@ -40,58 +107,177 @@ const ComposeModal = ({ onClose, onSend, onSaveDraft }) => {
     setAttachments(newAttachments);
   };
 
+  // Validate TeamSync email format
+  const validateTeamSyncEmail = (email) => {
+    return email.trim().endsWith('@teamsync.com');
+  };
+
   // Create email data object
   const createEmailData = () => {
+    console.log('Creating email data with:', { to, cc, bcc, subject, body, attachments, draftId });
+    
     // Parse recipients
-    const recipients = to ? to.split(',').map(email => email.trim()) : [];
+    const recipients = to 
+      ? to.split(',')
+          .map(email => email.trim())
+          .filter(email => email) // Remove empty entries
+      : [];
+    
+    console.log('Parsed recipients:', recipients);
+    
+    if (recipients.length === 0) {
+      throw new Error('Please specify at least one recipient');
+    }
+    
+    // Ensure all emails have @teamsync.com domain
+    const validatedRecipients = recipients.map(email => {
+      if (!email.includes('@')) {
+        // If no @ symbol, assume it's a username and add @teamsync.com
+        return `${email.toLowerCase()}@teamsync.com`;
+      } else if (!email.endsWith('@teamsync.com')) {
+        // If it has @ but wrong domain, replace with teamsync.com
+        const username = email.split('@')[0].toLowerCase();
+        return `${username}@teamsync.com`;
+      }
+      return email.toLowerCase();
+    });
+    
+    console.log('Validated recipients:', validatedRecipients);
+    
+    // Parse CC recipients
+    const ccRecipients = cc 
+      ? cc.split(',')
+          .map(email => email.trim())
+          .filter(email => email)
+          .map(email => {
+            if (!email.includes('@')) {
+              return `${email.toLowerCase()}@teamsync.com`;
+            } else if (!email.endsWith('@teamsync.com')) {
+              const username = email.split('@')[0].toLowerCase();
+              return `${username}@teamsync.com`;
+            }
+            return email.toLowerCase();
+          })
+      : [];
+      
+    // Parse BCC recipients
+    const bccRecipients = bcc 
+      ? bcc.split(',')
+          .map(email => email.trim())
+          .filter(email => email)
+          .map(email => {
+            if (!email.includes('@')) {
+              return `${email.toLowerCase()}@teamsync.com`;
+            } else if (!email.endsWith('@teamsync.com')) {
+              const username = email.split('@')[0].toLowerCase();
+              return `${username}@teamsync.com`;
+            }
+            return email.toLowerCase();
+          })
+      : [];
     
     // Create email data
-    return {
-      to: recipients,
-      cc: cc ? cc.split(',').map(email => email.trim()) : [],
-      bcc: bcc ? bcc.split(',').map(email => email.trim()) : [],
-      subject,
-      body,
-      attachments: attachments || []
+    const emailData = {
+      to: validatedRecipients,
+      cc: ccRecipients,
+      bcc: bccRecipients,
+      subject: subject.trim(),
+      body: body.trim(),
+      attachments: attachments,
+      draftId: draftId
     };
+    
+    console.log('Final email data:', emailData);
+    
+    return emailData;
   };
 
   // Handle save draft
   const handleSaveDraft = async () => {
-    // No validation needed for drafts
     try {
-      const result = await onSaveDraft(createEmailData());
-      if (result && result.success) {
-        alert('Draft saved successfully');
-        onClose(); // Close the modal after successful save
+      setSaving(true);
+      setError('');
+      setSuccessMessage('');
+      
+      // Create email data
+      const emailData = {
+        to: to.split(',').map(email => email.trim()).filter(email => email),
+        cc: cc.split(',').map(email => email.trim()).filter(email => email),
+        bcc: bcc.split(',').map(email => email.trim()).filter(email => email),
+        subject: subject.trim(),
+        body: body.trim(),
+        attachments: attachments,
+        draftId: draftId
+      };
+      
+      const result = await onSaveDraft(emailData);
+      
+      if (result.success) {
+        setSuccessMessage(result.message || 'Draft saved successfully');
+        // Update draft ID if this is a new draft
+        if (result.draftId && !draftId) {
+          setDraftId(result.draftId);
+        }
       } else {
-        alert(result?.message || 'Failed to save draft');
+        setError(result.message || 'Failed to save draft');
       }
-    } catch (error) {
-      console.error('Error saving draft:', error);
-      alert('Failed to save draft');
+    } catch (err) {
+      console.error('Error saving draft:', err);
+      setError(err.message || 'An error occurred while saving the draft');
+    } finally {
+      setSaving(false);
     }
   };
 
   // Handle send
   const handleSend = async () => {
-    // Basic validation
-    if (!to.trim()) {
-      alert('Please specify at least one recipient');
-      return;
-    }
-
     try {
-      const result = await onSend(createEmailData());
-      if (result && result.success) {
-        alert('Email sent successfully');
-        onClose(); // Close the modal after successful send
-      } else {
-        alert(result?.message || 'Failed to send email');
+      setSending(true);
+      setError('');
+      setSuccessMessage('');
+      
+      // Validate recipients
+      if (!to.trim()) {
+        setError('Please specify at least one recipient');
+        setSending(false);
+        return;
       }
-    } catch (error) {
-      console.error('Error sending email:', error);
-      alert('Failed to send email');
+      
+      // Create email data
+      const emailData = createEmailData();
+      
+      // Validate at least one recipient has @teamsync.com domain
+      const hasValidRecipient = emailData.to.some(email => validateTeamSyncEmail(email));
+      if (!hasValidRecipient) {
+        setError('At least one recipient must have a valid @teamsync.com email address');
+        setSending(false);
+        return;
+      }
+      
+      console.log('Sending email with data:', emailData);
+      const result = await onSend(emailData);
+      console.log('Send email result:', result);
+      
+      if (result.success) {
+        setSuccessMessage(result.message || 'Email sent successfully');
+        
+        // Close modal after a short delay
+        setTimeout(() => {
+          onClose();
+        }, 1500);
+      } else {
+        setError(result.message || 'Failed to send email');
+        
+        // If there are invalid recipients, show them
+        if (result.invalidRecipients && result.invalidRecipients.length > 0) {
+          setError(`Invalid recipients: ${result.invalidRecipients.join(', ')}`);
+        }
+      }
+    } catch (err) {
+      console.error('Error sending email:', err);
+      setError(err.message || 'An error occurred while sending the email');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -101,53 +287,86 @@ const ComposeModal = ({ onClose, onSend, onSaveDraft }) => {
   };
 
   return (
-    <div className="fixed bottom-0 right-6 w-2/3 max-w-3xl bg-white rounded-t-lg shadow-xl border border-gray-200 z-50 flex flex-col">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-gray-100 rounded-t-lg">
-        <h3 className="font-medium text-gray-800">
-          {subject ? subject : 'New Message'}
+    <div 
+      ref={modalRef}
+      className={`fixed bottom-0 right-10 bg-white shadow-xl rounded-t-lg w-full max-w-2xl z-50 ${
+        isMinimized ? 'h-12' : 'h-[600px]'
+      } flex flex-col transition-all duration-200`}
+    >
+      {/* Modal Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-gray-100 rounded-t-lg cursor-pointer" onClick={toggleMinimize}>
+        <h3 className="text-sm font-medium text-gray-700">
+          {draftData ? 'Edit Draft' : 'New Message'}
         </h3>
         <div className="flex items-center space-x-2">
-          <button 
-            onClick={toggleMinimize}
-            className="p-1 rounded hover:bg-gray-200"
-          >
-            {isMinimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
-          </button>
-          <button 
-            onClick={onClose}
-            className="p-1 rounded hover:bg-gray-200"
-          >
+          {isMinimized ? (
+            <Maximize2 size={16} className="text-gray-500" />
+          ) : (
+            <Minimize2 size={16} className="text-gray-500" />
+          )}
+          <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="text-gray-500 hover:text-gray-700">
             <X size={16} />
           </button>
         </div>
       </div>
 
-      {/* Body (hidden when minimized) */}
+      {/* Error/Success Messages */}
+      {error && (
+        <div className="px-4 py-2 bg-red-100 text-red-800 text-sm">
+          {error}
+        </div>
+      )}
+      
+      {successMessage && (
+        <div className="px-4 py-2 bg-green-100 text-green-800 text-sm">
+          {successMessage}
+        </div>
+      )}
+
+      {/* Modal Content */}
       {!isMinimized && (
         <>
-          {/* Recipients */}
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center mb-2">
+          {/* Email Form */}
+          <div className="border-b border-gray-200">
+            {/* From */}
+            <div className="flex items-center px-4 py-2 border-b border-gray-100">
+              <label className="w-12 text-sm text-gray-600">From:</label>
+              <input
+                type="text"
+                value={fromEmail}
+                disabled
+                className="flex-1 border-0 focus:ring-0 text-sm bg-gray-50"
+              />
+            </div>
+
+            {/* To */}
+            <div className="flex items-center px-4 py-2 border-b border-gray-100">
               <label className="w-12 text-sm text-gray-600">To:</label>
               <input
                 type="text"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
                 className="flex-1 border-0 focus:ring-0 text-sm"
-                placeholder="Recipients"
+                placeholder="Recipients (separate with commas)"
               />
-              <button 
-                onClick={() => setShowCcBcc(!showCcBcc)}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
-                {showCcBcc ? 'Hide' : 'Cc/Bcc'}
-              </button>
             </div>
 
+            {/* CC/BCC Toggle */}
+            {!showCcBcc && (
+              <div className="px-4 py-1 border-b border-gray-100">
+                <button
+                  onClick={() => setShowCcBcc(true)}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  Add Cc/Bcc
+                </button>
+              </div>
+            )}
+
+            {/* CC/BCC Fields */}
             {showCcBcc && (
               <>
-                <div className="flex items-center mb-2">
+                <div className="flex items-center px-4 py-2 border-b border-gray-100">
                   <label className="w-12 text-sm text-gray-600">Cc:</label>
                   <input
                     type="text"
@@ -157,7 +376,7 @@ const ComposeModal = ({ onClose, onSend, onSaveDraft }) => {
                     placeholder="Carbon copy"
                   />
                 </div>
-                <div className="flex items-center">
+                <div className="flex items-center px-4 py-2 border-t border-gray-100">
                   <label className="w-12 text-sm text-gray-600">Bcc:</label>
                   <input
                     type="text"
@@ -221,15 +440,17 @@ const ComposeModal = ({ onClose, onSend, onSaveDraft }) => {
             <div className="flex items-center space-x-2">
               <button 
                 onClick={handleSend}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm font-medium"
+                disabled={sending}
+                className={`px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm font-medium ${sending ? 'opacity-70 cursor-not-allowed' : ''}`}
               >
-                Send
+                {sending ? 'Sending...' : 'Send'}
               </button>
               <button 
                 onClick={handleSaveDraft}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors text-sm font-medium"
+                disabled={saving}
+                className={`px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors text-sm font-medium ${saving ? 'opacity-70 cursor-not-allowed' : ''}`}
               >
-                Save Draft
+                {saving ? 'Saving...' : 'Save Draft'}
               </button>
               <input
                 type="file"

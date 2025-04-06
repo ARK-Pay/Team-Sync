@@ -24,6 +24,9 @@ router.post('/draft', mailController.saveDraft);
 // Move email to folder
 router.put('/:emailId/move', mailController.moveEmail);
 
+// Special route for moving drafts to trash (to fix the 404 issue)
+router.post('/move-draft-to-trash', mailController.moveDraftToTrash);
+
 // Toggle star status
 router.put('/:emailId/star', mailController.toggleStarStatus);
 

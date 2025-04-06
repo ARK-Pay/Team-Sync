@@ -24,14 +24,33 @@ import {
   Clock,
   Copy,
   FileSpreadsheet,
-  X
+  X,
+  Info,
+  Loader
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
+// Update the socket.io connection to use proper options
 const socket = io("http://127.0.0.1:3001", {
-  transports: ["websocket"],
+  transports: ["websocket", "polling"], // Try websocket first, fallback to polling
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000,
+  timeout: 20000,
   withCredentials: true,
+});
+
+// Add connection status monitoring
+socket.on("connect", () => {
+  console.log("Socket connected successfully with ID:", socket.id);
+});
+
+socket.on("connect_error", (error) => {
+  console.error("Socket connection error:", error);
+});
+
+socket.on("disconnect", (reason) => {
+  console.log("Socket disconnected:", reason);
 });
 
 const VideoConference = ({ roomId }) => {
@@ -73,18 +92,19 @@ const VideoConference = ({ roomId }) => {
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [meetingTimer, setMeetingTimer] = useState(null);
+  const [connectionQuality, setConnectionQuality] = useState('excellent'); // 'excellent', 'good', 'poor'
   
   // Speech recognition state
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [speechRecognition, setSpeechRecognition] = useState(null);
-  const [transcriptSegments, setTranscriptSegments] = useState([]);
-  const [currentTranscriptText, setCurrentTranscriptText] = useState("");
-  const [transcriptionEnabled, setTranscriptionEnabled] = useState(false);
-  const [recognizedTopics, setRecognizedTopics] = useState([]);
-  
+  const [transcriptText, setTranscriptText] = useState('');
+  const [interimTranscript, setInterimTranscript] = useState('');
+  const [meetingHighlights, setMeetingHighlights] = useState([]);
+  const [transcriptionStartTime, setTranscriptionStartTime] = useState(null);
+  const [recognitionInstance, setRecognitionInstance] = useState(null);
+
   // Refs for components
   const myVideo = useRef();
-  const screenVideo = useRef();
+  const screenVideoRef = useRef();
   const analyser = useRef(null);
   const dataArray = useRef(null);
   const chatContainerRef = useRef(null);
@@ -92,9 +112,6 @@ const VideoConference = ({ roomId }) => {
   const remoteVideoRefs = useRef({});
   const combinedStreamRef = useRef(null);
   
-  // Refs for speech recognition
-  const transcriptTimeoutRef = useRef(null);
-
   // Retrieve project name from localStorage
   useEffect(() => {
     const storedProjectName = localStorage.getItem("project_name");
@@ -120,9 +137,62 @@ const VideoConference = ({ roomId }) => {
   useEffect(() => {
     const startMedia = async () => {
       try {
-        const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        console.log("[VideoDebug] Starting media stream initialization");
+        
+        // First check if camera and microphone permissions are available
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        
+        if (videoDevices.length === 0) {
+          console.warn("[VideoDebug] No video devices found");
+          showNotificationMessage("No camera detected on your device", "warning");
+        }
+        
+        // Get user media with constraints
+        const constraints = {
+          audio: true,
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: "user"
+          }
+        };
+        
+        console.log("[VideoDebug] Requesting media with constraints:", constraints);
+        const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        // Check if we actually got video tracks
+        const videoTracks = mediaStream.getVideoTracks();
+        if (videoTracks.length === 0) {
+          console.warn("[VideoDebug] No video tracks in the media stream");
+          showNotificationMessage("Camera access granted but no video detected", "warning");
+        } else {
+          console.log("[VideoDebug] Video tracks obtained:", videoTracks.length);
+          videoTracks.forEach(track => {
+            console.log("[VideoDebug] Video track:", track.label, "enabled:", track.enabled);
+          });
+        }
+        
+        // Set the stream state
         setStream(mediaStream);
-        if (myVideo.current) myVideo.current.srcObject = mediaStream;
+        
+        // Attach stream to video element
+        if (myVideo.current) {
+          console.log("[VideoDebug] Setting local video stream");
+          myVideo.current.srcObject = mediaStream;
+          
+          // Add event listener to ensure video plays
+          myVideo.current.onloadedmetadata = () => {
+            console.log("[VideoDebug] Video metadata loaded");
+            myVideo.current.play()
+              .then(() => console.log("[VideoDebug] Local video playback started"))
+              .catch(err => console.error("[VideoDebug] Error playing local video:", err));
+          };
+          
+          console.log("[VideoDebug] Local video:", myVideo.current);
+        } else {
+          console.error("[VideoDebug] Video ref is null");
+        }
 
         // Add yourself to participants list
         const userName = localStorage.getItem("user_name") || "You";
@@ -131,13 +201,24 @@ const VideoConference = ({ roomId }) => {
           { id: socket.id, name: userName, micOn: true, cameraOn: true, isLocal: true }
         ]);
 
+        // Join the room
         socket.emit("join-room", roomId, socket.id, userName);
         
         // Show notification
         showNotificationMessage("Connected to meeting", "success");
       } catch (error) {
-        console.error("Error accessing media devices:", error);
-        showNotificationMessage("Failed to access camera/microphone", "error");
+        console.error("[VideoDebug] Error accessing media devices:", error);
+        
+        // Provide more specific error messages based on the error
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          showNotificationMessage("Camera/microphone access denied. Please check your permissions.", "error");
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          showNotificationMessage("Camera or microphone not found on your device.", "error");
+        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+          showNotificationMessage("Camera or microphone is already in use by another application.", "error");
+        } else {
+          showNotificationMessage("Failed to access camera/microphone: " + error.message, "error");
+        }
       }
     };
 
@@ -183,6 +264,23 @@ const VideoConference = ({ roomId }) => {
       }
     });
 
+    // Handle screen sharing events
+    socket.on('screen-share-started', (userId) => {
+      console.log(`User ${userId} started screen sharing`);
+      // Update the participant's screen sharing status
+      setParticipants(prev => 
+        prev.map(p => p.id === userId ? {...p, isScreenSharing: true} : p)
+      );
+    });
+    
+    socket.on('screen-share-stopped', (userId) => {
+      console.log(`User ${userId} stopped screen sharing`);
+      // Update the participant's screen sharing status
+      setParticipants(prev => 
+        prev.map(p => p.id === userId ? {...p, isScreenSharing: false} : p)
+      );
+    });
+
     return () => {
       socket.emit("leave-room", roomId);
       socket.disconnect();
@@ -196,6 +294,8 @@ const VideoConference = ({ roomId }) => {
       socket.off("mic-toggle");
       socket.off("camera-toggle");
       socket.off("chat-message");
+      socket.off('screen-share-started');
+      socket.off('screen-share-stopped');
     };
   }, [roomId]);
 
@@ -266,55 +366,57 @@ const VideoConference = ({ roomId }) => {
     }
   };
 
-  // Toggle camera on/off
+  // Toggle camera function with improved handling to fix black screen issue
   const toggleCamera = async () => {
-    if (stream) {
-      const videoTrack = stream.getVideoTracks()[0];
-      
-      if (videoTrack.enabled) {
-        // Turning camera off
-        videoTrack.enabled = false;
+    try {
+      if (cameraOn) {
+        // Turn camera off
+        if (stream) {
+          const videoTracks = stream.getVideoTracks();
+          videoTracks.forEach(track => {
+            track.enabled = false;
+          });
+        }
         setCameraOn(false);
+        socket.emit('toggle-camera', roomId, false);
       } else {
-        // Turning camera on - need to restart the track
+        // Turn camera on - completely restart video to fix black screen issue
         try {
-          // Stop the current track
-          videoTrack.stop();
-          
-          // Get a new video track
-          const newStream = await navigator.mediaDevices.getUserMedia({ video: true });
-          const newVideoTrack = newStream.getVideoTracks()[0];
-          
-          // Replace the old track with the new one
-          stream.removeTrack(videoTrack);
-          stream.addTrack(newVideoTrack);
-          
-          // Update the video element
-          if (myVideo.current) {
-            myVideo.current.srcObject = null;
-            myVideo.current.srcObject = stream;
-            await myVideo.current.play().catch(e => {
-              console.error("Error playing video after camera toggle:", e);
-            });
+          // Stop all existing video tracks
+          if (stream) {
+            const videoTracks = stream.getVideoTracks();
+            videoTracks.forEach(track => track.stop());
           }
           
-          newVideoTrack.enabled = true;
+          // Get fresh video stream
+          const newVideoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          const newVideoTrack = newVideoStream.getVideoTracks()[0];
+          
+          // Get audio from existing stream
+          let audioTracks = [];
+          if (stream) {
+            audioTracks = stream.getAudioTracks();
+          }
+          
+          // Create a new combined stream
+          const newStream = new MediaStream([...audioTracks, newVideoTrack]);
+          setStream(newStream);
+          
+          // Update video element
+          if (myVideo.current) {
+            myVideo.current.srcObject = newStream;
+          }
+          
           setCameraOn(true);
+          socket.emit('toggle-camera', roomId, true);
         } catch (error) {
           console.error("Error restarting camera:", error);
-          showNotificationMessage("Failed to turn camera back on", "error");
-          return;
+          toast.error("Failed to restart camera");
         }
       }
-      
-      // Update yourself in participants list
-      updateParticipant(socket.id, { cameraOn: !videoTrack.enabled ? false : true });
-      
-      // Notify others of change
-      socket.emit("camera-toggle", { userId: socket.id, cameraOn: !videoTrack.enabled ? false : true });
-      
-      // Show notification
-      showNotificationMessage(`Camera ${!videoTrack.enabled ? 'turned off' : 'turned on'}`, "info");
+    } catch (error) {
+      console.error("Error toggling camera:", error);
+      toast.error("Failed to toggle camera");
     }
   };
 
@@ -347,112 +449,188 @@ const VideoConference = ({ roomId }) => {
   }, [stream, logVideoState]);
 
   // Effect for screen sharing
-useEffect(() => {
-    if (screenStream && screenVideo.current) {
+  useEffect(() => {
+    if (screenStream && screenVideoRef.current) {
       // For screen sharing
       console.log("[VideoDebug] Setting screen sharing stream");
       try {
-        screenVideo.current.srcObject = screenStream;
-        logVideoState('Screen', screenVideo.current, screenStream);
+        screenVideoRef.current.srcObject = screenStream;
+        logVideoState('Screen', screenVideoRef.current, screenStream);
       } catch (err) {
         console.error("Error setting screen sharing stream:", err);
       }
     }
   }, [screenStream, logVideoState]);
 
-  // Improved screen sharing with better browser compatibility
+  // Screen sharing functionality with fixed camera handling
   const toggleScreenShare = async () => {
-    if (!screenSharing) {
-      try {
-        console.log("[VideoDebug] Starting screen share");
+    try {
+      if (screenSharing) {
+        // Stop screen sharing
+        if (screenStream) {
+          screenStream.getTracks().forEach(track => track.stop());
+          setScreenStream(null);
+        }
+        setScreenSharing(false);
         
-        // Use a more compatible approach with explicit options
+        // Notify other participants
+        socket.emit('screen-share-stopped', socket.id);
+        
+        // Ensure camera stays on after stopping screen share
+        if (stream) {
+          // Make sure video tracks are enabled
+          const videoTracks = stream.getVideoTracks();
+          if (videoTracks.length > 0) {
+            // Only enable if camera was previously on
+            if (cameraOn) {
+              videoTracks.forEach(track => {
+                track.enabled = true;
+              });
+            }
+          } else if (cameraOn) {
+            // If no video tracks but camera should be on, restart camera
+            restartCamera();
+          }
+          
+          // Ensure video element is properly connected to stream
+          if (myVideo.current) {
+            myVideo.current.srcObject = stream;
+            myVideo.current.play().catch(err => {
+              console.error("Error playing video after screen share:", err);
+            });
+          }
+        }
+      } else {
+        // Start screen sharing
         const displayStream = await navigator.mediaDevices.getDisplayMedia({
           video: {
             cursor: "always",
-            frameRate: 30,
-            displaySurface: "monitor"
+            displaySurface: "monitor",
+            frameRate: 30
           },
-          audio: true,  // Try to capture system audio if available
-          selfBrowserSurface: "include", // Include the browser window itself
-          systemAudio: "include" // Include system audio if available
-        }).catch(err => {
-          console.error("[VideoDebug] Initial screen share attempt failed, trying alternative:", err);
-          // Fallback with simpler options
-          return navigator.mediaDevices.getDisplayMedia({ 
-            video: true,
-            audio: false
-          });
+          audio: false // Don't capture audio from screen to avoid echo
         });
         
-        // Verify we got a valid stream with tracks
-        if (displayStream && displayStream.getVideoTracks().length > 0) {
-          console.log("[VideoDebug] Screen share tracks:", displayStream.getVideoTracks());
-          const videoTrack = displayStream.getVideoTracks()[0];
-          console.log("[VideoDebug] Screen video track settings:", videoTrack.getSettings());
-          
-          setScreenStream(displayStream);
-          setScreenSharing(true);
-          
-          // Force the video element srcObject immediately
-          if (screenVideo.current) {
-            try {
-              screenVideo.current.srcObject = null; // Clear first to force refresh
-              screenVideo.current.srcObject = displayStream;
-              // Add event listener for when the video is ready
-              screenVideo.current.onloadedmetadata = () => {
-                console.log("[VideoDebug] Screen video loaded metadata, playing...");
-                screenVideo.current.play().catch(e => {
-                  console.error("[VideoDebug] Error playing screen video:", e);
-                });
-              };
-              logVideoState('Screen (direct)', screenVideo.current, displayStream);
-            } catch (err) {
-              console.error("Error setting screen stream to video element:", err);
-            }
-          } else {
-            console.error("[VideoDebug] Screen video ref not available");
-          }
-          
-          // Listen for the end of screen sharing
-          displayStream.getVideoTracks()[0].onended = () => {
-            console.log("[VideoDebug] Screen share track ended");
-            stopScreenShare();
-          };
-          
-          showNotificationMessage("Screen sharing started", "success");
-        } else {
-          console.error("[VideoDebug] Got screen share stream but no video tracks");
-          showNotificationMessage("Failed to start screen sharing - no video tracks", "error");
+        // Store screen stream separately from camera stream
+        setScreenStream(displayStream);
+        setScreenSharing(true);
+        
+        // Set up screen video
+        if (screenVideoRef.current) {
+          screenVideoRef.current.srcObject = displayStream;
         }
-      } catch (error) {
-        console.error("[VideoDebug] Error sharing screen:", error);
-        showNotificationMessage(`Failed to share screen: ${error.message}`, "error");
+        
+        // Handle stream ending (user stops sharing)
+        displayStream.getVideoTracks()[0].onended = () => {
+          setScreenSharing(false);
+          setScreenStream(null);
+          socket.emit('screen-share-stopped', socket.id);
+          
+          // Ensure camera stays on after stopping screen share
+          if (stream) {
+            // Make sure video tracks are enabled
+            const videoTracks = stream.getVideoTracks();
+            if (videoTracks.length > 0) {
+              // Only enable if camera was previously on
+              if (cameraOn) {
+                videoTracks.forEach(track => {
+                  track.enabled = true;
+                });
+              }
+            } else if (cameraOn) {
+              // If no video tracks but camera should be on, restart camera
+              restartCamera();
+            }
+            
+            // Ensure video element is properly connected to stream
+            if (myVideo.current) {
+              myVideo.current.srcObject = stream;
+              myVideo.current.play().catch(err => {
+                console.error("Error playing video after screen share:", err);
+              });
+            }
+          }
+        };
+        
+        // Notify other participants
+        socket.emit('screen-share-started', socket.id);
       }
-    } else {
-      stopScreenShare();
+    } catch (error) {
+      console.error("Error toggling screen share:", error);
+      toast.error("Failed to share screen");
     }
   };
 
-  // Stop screen sharing with improved logging
-  const stopScreenShare = () => {
-    console.log("[VideoDebug] Stopping screen share");
-    if (screenStream) {
-      screenStream.getTracks().forEach(track => {
-        console.log(`[VideoDebug] Stopping screen track: ${track.kind}`);
-        track.stop();
-      });
+  // Helper function to restart camera
+  const restartCamera = async () => {
+    try {
+      // Get fresh video stream
+      const newVideoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const newVideoTrack = newVideoStream.getVideoTracks()[0];
       
-      // Make sure we clear the srcObject
-      if (screenVideo.current) {
-        screenVideo.current.srcObject = null;
+      // Get audio from existing stream
+      let audioTracks = [];
+      if (stream) {
+        audioTracks = stream.getAudioTracks();
       }
       
-      setScreenStream(null);
-      setScreenSharing(false);
-      showNotificationMessage("Screen sharing stopped", "info");
+      // Create a new combined stream
+      const newStream = new MediaStream([...audioTracks, newVideoTrack]);
+      setStream(newStream);
+      
+      // Update video element
+      if (myVideo.current) {
+        myVideo.current.srcObject = newStream;
+        myVideo.current.play().catch(err => {
+          console.error("Error playing restarted camera:", err);
+        });
+      }
+      
+      setCameraOn(true);
+    } catch (error) {
+      console.error("Error restarting camera:", error);
+      toast.error("Failed to restart camera");
     }
   };
+
+  // Effect to ensure camera stays visible during screen sharing
+  useEffect(() => {
+    // When screen sharing starts, make sure local video is visible
+    if (screenSharing && myVideo.current && stream) {
+      // Ensure the video element has the correct stream
+      myVideo.current.srcObject = stream;
+      
+      // Make sure it's playing
+      myVideo.current.play().catch(err => {
+        console.error("Error playing local video during screen sharing:", err);
+      });
+    }
+  }, [screenSharing, stream]);
+
+  // Effect to handle camera state when screen sharing changes
+  useEffect(() => {
+    // When screen sharing stops, ensure camera is properly restored
+    if (!screenSharing && cameraOn && stream) {
+      // Small delay to ensure proper transition
+      const timer = setTimeout(() => {
+        // Check if video tracks are enabled
+        const videoTracks = stream.getVideoTracks();
+        
+        if (videoTracks.length === 0 || !videoTracks[0].enabled) {
+          // If camera should be on but tracks are disabled or missing, restart camera
+          restartCamera();
+        } else if (myVideo.current) {
+          // Ensure video element is properly connected to stream
+          myVideo.current.srcObject = stream;
+          myVideo.current.play().catch(err => {
+            console.error("Error playing video after screen share stopped:", err);
+          });
+        }
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [screenSharing, cameraOn, stream]);
 
   // Toggle participants sidebar
   const toggleParticipants = () => {
@@ -650,577 +828,317 @@ useEffect(() => {
     return 'video/webm'; // Fallback
   };
 
-  // Update the speech recognition initialization
-  useEffect(() => {
-    // Set up speech recognition if available
-    if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+  // Toggle AI summarizer
+  const toggleAISummarizer = () => {
+    if (isTranscribing) {
+      // Stop transcription and generate summary
+      stopTranscription();
+    } else {
+      // Clear any previous transcript text before starting
+      setTranscriptText('');
+      // Start transcription
+      startTranscription();
+    }
+  };
+
+  // Start voice transcription
+  const startTranscription = () => {
+    // Reset transcript text when starting new recording
+    setTranscriptText('');
+    
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      toast.error('Speech recognition is not supported in your browser');
+      return;
+    }
+
+    try {
+      // Initialize speech recognition
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      
       const recognition = new SpeechRecognition();
+      
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
-      recognition.maxAlternatives = 3;
       
-      // Increase the recognition timeout
-      recognition.addEventListener('nomatch', () => {
-        console.log("Speech recognition did not match any text");
-      });
-      
-      // Make sure to restart whenever it ends
-      recognition.onend = () => {
-        console.log("Speech recognition ended - checking if restart needed");
-        if (isTranscribing) {
-          try {
-            console.log("Attempting to restart speech recognition");
-            setTimeout(() => {
-              recognition.start();
-              console.log("Speech recognition restarted");
-            }, 300);
-          } catch (e) {
-            console.error("Error restarting speech recognition:", e);
-            showNotificationMessage("Speech recognition failed to restart. Try again.", "error");
-          }
-        }
+      recognition.onstart = () => {
+        console.log('Speech recognition started');
+        setIsTranscribing(true);
+        setTranscriptionStartTime(new Date());
+        toast.success('AI Meeting Summarizer started');
       };
       
       recognition.onresult = (event) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
-        
-        console.log(`Got speech results: ${event.results.length} results`);
+        let interim = '';
+        let final = '';
         
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript.trim();
-          const confidence = event.results[i][0].confidence;
-          console.log(`Transcript: "${transcript}" with confidence: ${confidence}`);
-          
           if (event.results[i].isFinal) {
-            finalTranscript += transcript + ' ';
+            final += event.results[i][0].transcript + ' ';
           } else {
-            interimTranscript += transcript + ' ';
+            interim += event.results[i][0].transcript;
           }
         }
         
-        if (finalTranscript) {
-          console.log("Final transcript captured:", finalTranscript);
-          
-          // Get current user name from either localStorage or participants list
-          const currentUserName = localStorage.getItem("user_name") || 
-                                 participants.find(p => p.id === socket.id)?.name || 
-                                 "You";
-          
-          // Add text to transcript segments with current user as speaker
-          const newSegment = { 
-            speaker: currentUserName, 
-            text: finalTranscript.trim(), 
-            timestamp: new Date().toISOString() 
-          };
-          
-          setTranscriptSegments(prev => [...prev, newSegment]);
-          setCurrentTranscriptText("");
-          
-          console.log("Added transcript segment:", newSegment);
-          console.log("Current segments:", transcriptSegments.length + 1);
-        } else if (interimTranscript) {
-          setCurrentTranscriptText(interimTranscript.trim());
+        if (final) {
+          console.log("Captured final text:", final);
+          setTranscriptText(prev => prev + final);
         }
+        
+        setInterimTranscript(interim);
       };
       
       recognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
-        
-        // If it's a no-speech timeout or other error, restart
-        if (event.error === 'no-speech' || event.error === 'network' || event.error === 'aborted') {
-          if (isTranscribing) {
-            showNotificationMessage(`Speech recognition error: ${event.error}. Restarting...`, "warning");
-            try {
-              recognition.stop();
-              setTimeout(() => {
-                if (isTranscribing) {
-                  recognition.start();
-                  console.log("Restarted after speech recognition error");
-                }
-              }, 500);
-            } catch (e) {
-              console.error("Error restarting after error:", e);
-            }
+        console.error('Speech recognition error', event.error);
+        if (event.error === 'no-speech') {
+          // This is a common error, don't show to user
+          return;
+        }
+        toast.error(`Speech recognition error: ${event.error}`);
+      };
+      
+      recognition.onend = () => {
+        // Restart recognition if we're still in transcribing mode
+        if (isTranscribing) {
+          try {
+            recognition.start();
+          } catch (e) {
+            console.error("Error restarting recognition:", e);
           }
         }
       };
       
-      setSpeechRecognition(recognition);
-    } else {
-      console.error("Speech Recognition API not supported in this browser");
-      showNotificationMessage("Speech Recognition is not supported in your browser. Try Chrome.", "error");
-    }
-  }, [isTranscribing, participants]);
-
-  // Handle the transcript summary
-  const getTranscriptSummary = async () => {
-    try {
-      setLoadingSummary(true);
-      const availableSegments = transcriptSegments.filter(
-        (segment) => segment.text.trim() !== ""
-      );
-
-      if (availableSegments.length === 0) {
-        setShowSummaryModal(true);
-        setLoadingSummary(false);
-        setMeetingSummary(
-          "Not enough conversation to summarize. Please speak during recording."
-        );
-        return;
-      }
-
-      // For our fallback solution (no API available)
-      const fullTranscript = availableSegments
-        .map((segment) => `${segment.speaker || "You"}: ${segment.text}`)
-        .join("\n");
-
-      try {
-        // Try using API
-        const response = await fetch("http://127.0.0.1:3001/api/summary", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ transcript: fullTranscript }),
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to get summary from API");
-        }
-
-        const data = await response.json();
-        setMeetingSummary(data.summary);
-        
-        // Process recognized topics
-        const topics = data.topics || [];
-        setRecognizedTopics(topics);
-        
-        // Process action items - ensure they have the correct structure
-        const items = data.actionItems || [];
-        const formattedItems = items.map(item => {
-          return typeof item === 'string' 
-            ? { text: item, completed: false }
-            : { ...item, completed: item.completed || false };
-        });
-        setActionItems(formattedItems);
-        
-      } catch (error) {
-        console.error("Error fetching from API:", error);
-        
-        // Generate a local summary as fallback
-        generateLocalSummary(fullTranscript);
-      } finally {
-        setLoadingSummary(false);
-        setShowSummaryModal(true);
-      }
+      recognition.start();
+      setRecognitionInstance(recognition);
+      
     } catch (error) {
-      console.error("Error in summary generation:", error);
-      setLoadingSummary(false);
-      setShowSummaryModal(true);
-      setMeetingSummary(
-        "An error occurred while generating the summary. Please try again."
-      );
+      console.error('Error starting speech recognition:', error);
+      toast.error('Failed to start speech recognition');
     }
   };
 
-  // Function to generate a local summary as fallback when API fails
-  const generateLocalSummary = (transcript) => {
-    console.log("Generating local summary from transcript:", transcript);
+  // Stop voice transcription
+  const stopTranscription = () => {
+    console.log("Stopping transcription, transcript length:", transcriptText.length);
     
-    // Make sure we have actual text content
-    if (!transcript || transcript.trim().length < 10) {
-      setMeetingSummary(
-        "No meaningful conversation was detected during recording. Please ensure your microphone is working and speak clearly during recording."
-      );
-      setRecognizedTopics([]);
+    if (recognitionInstance) {
+      recognitionInstance.stop();
+    }
+    
+    setIsTranscribing(false);
+    setInterimTranscript('');
+    
+    // Generate summary if we have transcript text
+    if (transcriptText && transcriptText.trim() && transcriptText.trim().length > 10) {
+      console.log("Generating summary from transcript:", transcriptText);
+      setLoadingSummary(true);
+      generateMeetingSummary();
+    } else {
+      console.log("No transcript text to summarize");
+      toast.error('No speech detected - please speak during recording');
+      // Clear any existing summary
+      setMeetingSummary('');
+      setMeetingHighlights([]);
       setActionItems([]);
+    }
+  };
+
+  // Helper function to extract highlights from transcript
+  const extractHighlights = (text) => {
+    const highlights = [];
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 10);
+    
+    // Look for sentences with key phrases
+    const keyPhrases = [
+      'important', 'key', 'critical', 'essential', 'crucial',
+      'highlight', 'focus', 'priority', 'main point', 'remember',
+      'take note', 'significant', 'major', 'primary'
+    ];
+    
+    for (const sentence of sentences) {
+      const lower = sentence.toLowerCase();
+      if (keyPhrases.some(phrase => lower.includes(phrase))) {
+        // Clean up the sentence
+        let cleanSentence = sentence.trim();
+        // Capitalize first letter
+        cleanSentence = cleanSentence.charAt(0).toUpperCase() + cleanSentence.slice(1);
+        // Add period if missing
+        if (!cleanSentence.endsWith('.') && !cleanSentence.endsWith('!') && !cleanSentence.endsWith('?')) {
+          cleanSentence += '.';
+        }
+        highlights.push(cleanSentence);
+      }
+    }
+    
+    // If we don't have enough highlights, add some longer sentences
+    if (highlights.length < 3) {
+      const longSentences = sentences
+        .filter(s => s.trim().length > 50)
+        .sort((a, b) => b.length - a.length)
+        .slice(0, 5 - highlights.length)
+        .map(s => {
+          // Clean up the sentence
+          let cleanSentence = s.trim();
+          // Capitalize first letter
+          cleanSentence = cleanSentence.charAt(0).toUpperCase() + cleanSentence.slice(1);
+          // Add period if missing
+          if (!cleanSentence.endsWith('.') && !cleanSentence.endsWith('!') && !cleanSentence.endsWith('?')) {
+            cleanSentence += '.';
+          }
+          return cleanSentence;
+        });
+      
+      highlights.push(...longSentences);
+    }
+    
+    // Limit to 5 highlights and remove duplicates
+    return [...new Set(highlights)].slice(0, 5);
+  };
+
+  // Helper function to extract action items from transcript
+  const extractActionItems = (text) => {
+    const actionItems = [];
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 10);
+    
+    // Look for sentences with action item phrases
+    const actionPhrases = [
+      'need to', 'should', 'will', 'must', 'going to',
+      'task', 'action item', 'follow up', 'follow-up', 'todo',
+      'to do', 'to-do', 'assign', 'responsibility', 'deadline'
+    ];
+    
+    for (const sentence of sentences) {
+      const lower = sentence.toLowerCase();
+      if (actionPhrases.some(phrase => lower.includes(phrase))) {
+        // Clean up the sentence
+        let cleanSentence = sentence.trim();
+        // Capitalize first letter
+        cleanSentence = cleanSentence.charAt(0).toUpperCase() + cleanSentence.slice(1);
+        // Add period if missing
+        if (!cleanSentence.endsWith('.') && !cleanSentence.endsWith('!') && !cleanSentence.endsWith('?')) {
+          cleanSentence += '.';
+        }
+        actionItems.push(cleanSentence);
+      }
+    }
+    
+    // Limit to 5 action items and remove duplicates
+    return [...new Set(actionItems)].slice(0, 5);
+  };
+
+  // Helper function to generate an overview
+  const generateOverview = (text) => {
+    // Clean up the text first
+    const cleanText = text.replace(/\s+/g, ' ').trim();
+    
+    // Split into sentences
+    const sentences = cleanText.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    
+    // Take the first 2-3 sentences for the overview
+    const selectedSentences = sentences.slice(0, Math.min(3, sentences.length));
+    
+    // Clean up and format sentences
+    const formattedSentences = selectedSentences.map(s => {
+      let cleanSentence = s.trim();
+      // Capitalize first letter
+      cleanSentence = cleanSentence.charAt(0).toUpperCase() + cleanSentence.slice(1);
+      // Add period if missing
+      if (!cleanSentence.endsWith('.') && !cleanSentence.endsWith('!') && !cleanSentence.endsWith('?')) {
+        cleanSentence += '.';
+      }
+      return cleanSentence;
+    });
+    
+    return formattedSentences.join(' ');
+  };
+
+  // Generate meeting summary using AI
+  const generateMeetingSummary = async (textOverride) => {
+    const textToSummarize = textOverride || transcriptText;
+    
+    if (!textToSummarize || !textToSummarize.trim()) {
+      toast.error('No transcript available to summarize');
+      setLoadingSummary(false);
       return;
     }
     
-    // Extract potential topics from transcript
-    const potentialTopics = extractTopics(transcript);
-    setRecognizedTopics(potentialTopics.length > 0 ? potentialTopics : ["No clear topics detected"]);
+    setShowSummaryModal(true);
     
-    // Extract potential action items
-    const potentialActionItems = extractActionItems(transcript);
-    
-    if (potentialActionItems.length > 0) {
-      setActionItems(potentialActionItems.map(item => ({ 
-        text: item, 
-        completed: false 
-      })));
-    } else {
-      setActionItems([{ 
-        text: "No clear action items detected. Try having a more detailed conversation.",
-        completed: false 
-      }]);
-    }
-    
-    // Set a basic summary
-    const speakerCount = new Set(transcriptSegments.map(segment => segment.speaker)).size;
-    const speakers = [...new Set(transcriptSegments.map(segment => segment.speaker))].join(", ");
-    const wordCount = transcript.split(/\s+/).length;
-    const estimatedMinutes = Math.max(1, Math.round(wordCount / 150));
-    
-    if (wordCount < 50) {
-      setMeetingSummary(
-        "The recorded conversation was too brief to generate a meaningful summary. " +
-        "Please have a longer discussion or check that your microphone is working properly."
-      );
-    } else {
-      setMeetingSummary(
-        "This is a locally generated summary as our AI service is currently unavailable. " +
-        "We've identified potential topics and action items from your conversation.\n\n" +
-        `The transcript included approximately ${estimatedMinutes} ${estimatedMinutes === 1 ? 'minute' : 'minutes'} ` +
-        `of conversation between ${speakerCount > 1 ? speakers : 'participants'}.\n\n` +
-        "For best results, please ensure you're speaking clearly and close to your microphone. " +
-        "Try refreshing the page if speech recognition is not working as expected."
-      );
-    }
-  };
-
-  // Function to extract potential topics from transcript with improved detail
-  const extractTopics = (transcript) => {
-    console.log("Extracting topics from transcript of length:", transcript.length);
-    
-    // Improved topic extraction with more detailed analysis
-    if (!transcript || transcript.trim().length < 20) {
-      return ["No meaningful conversation detected"];
-    }
-    
-    // Extract sentences to analyze for topics
-    const sentences = transcript.split(/[.!?]+/).filter(s => s.trim().length > 10);
-    
-    // Common words to exclude from topics
-    const stopWords = [
-      "the", "and", "that", "this", "with", "for", "have", "you", "not", "but", 
-      "was", "are", "what", "when", "why", "how", "from", "your", "will", "would",
-      "could", "should", "than", "then", "them", "these", "those", "there", "their",
-      "about", "which", "been", "into", "some", "very", "just", "also", "like",
-      "okay", "yes", "no", "maybe", "sure", "right", "well", "know", "think", "said",
-      "going", "get", "got", "because", "says", "trying", "does", "doing", "done",
-      "being", "need", "needs", "wants", "wanted", "way", "really"
-    ];
-    
-    // Topic indicator phrases that suggest important discussion points
-    const topicIndicators = [
-      "discuss", "talk about", "focus on", "regarding", "concerning",
-      "about the", "topic of", "subject of", "matter of", "issue of", 
-      "idea of", "concept of", "plan for", "strategy for", "approach to",
-      "related to", "in terms of", "with respect to", "agenda", "important"
-    ];
-    
-    // Analyze words frequency first
-    const wordFrequency = {};
-    const words = transcript.toLowerCase().split(/\s+/);
-    
-    words.forEach(word => {
-      const cleanWord = word.replace(/[^\w\s]|_/g, "").trim();
-      if (cleanWord.length > 3 && !stopWords.includes(cleanWord)) {
-        wordFrequency[cleanWord] = (wordFrequency[cleanWord] || 0) + 1;
-      }
-    });
-    
-    // Get frequent keywords
-    const frequentKeywords = Object.entries(wordFrequency)
-      .filter(([_, count]) => count > 2)
-      .sort(([_, countA], [__, countB]) => countB - countA)
-      .slice(0, 10)
-      .map(([word]) => word);
-    
-    console.log("Frequent keywords:", frequentKeywords);
-    
-    // Find sentences that might be describing topics
-    const potentialTopicSentences = sentences.filter(sentence => {
-      const lowerSentence = sentence.toLowerCase();
-      // Check if sentence contains any topic indicators
-      return topicIndicators.some(indicator => lowerSentence.includes(indicator)) ||
-             // Or contains multiple frequent keywords
-             frequentKeywords.filter(keyword => lowerSentence.includes(keyword)).length >= 2;
-    });
-    
-    // Extract potential phrases from topic sentences
-    let candidateTopics = [];
-    
-    // First try to extract from sentences with topic indicators
-    potentialTopicSentences.forEach(sentence => {
-      const lowerSentence = sentence.toLowerCase().trim();
+    try {
+      console.log("Generating summary from text of length:", textToSummarize.length);
       
-      // Look for phrases following topic indicators
-      for (const indicator of topicIndicators) {
-        if (lowerSentence.includes(indicator)) {
-          const index = lowerSentence.indexOf(indicator) + indicator.length;
-          const remainingText = lowerSentence.slice(index).trim();
-          
-          if (remainingText.length > 3 && remainingText.length < 50) {
-            const topic = remainingText.charAt(0).toUpperCase() + remainingText.slice(1);
-            candidateTopics.push(topic);
-          }
-        }
-      }
-    });
-    
-    // If we couldn't find topics using indicators, extract based on keyword phrases
-    if (candidateTopics.length < 2) {
-      sentences.forEach(sentence => {
-        const lowerSentence = sentence.toLowerCase();
-        
-        // If the sentence contains multiple frequent keywords, consider it a topic
-        const containedKeywords = frequentKeywords.filter(keyword => 
-          lowerSentence.includes(keyword)
-        );
-        
-        if (containedKeywords.length >= 2) {
-          // Extract a reasonable portion of the sentence
-          let topic = sentence.trim();
-          
-          // Limit to a reasonable length (30-80 chars)
-          if (topic.length > 80) {
-            topic = topic.slice(0, 77) + "...";
-          } else if (topic.length < 30 && containedKeywords.length >= 2) {
-            // If it's too short, expand with keywords context
-            const contextWords = containedKeywords.join(" and ") + " discussion";
-            topic = topic + " - " + contextWords;
-          }
-          
-          // Capitalize first letter
-          topic = topic.charAt(0).toUpperCase() + topic.slice(1);
-          candidateTopics.push(topic);
-        }
-      });
-    }
-    
-    // Deduplicate topics and limit to 5
-    const uniqueTopics = [...new Set(candidateTopics)];
-    let finalTopics = uniqueTopics.slice(0, 5);
-    
-    // If we still don't have enough topics, add keyword-based generic topics
-    if (finalTopics.length < 2 && frequentKeywords.length > 0) {
-      for (let i = 0; i < Math.min(3, frequentKeywords.length); i++) {
-        const keyword = frequentKeywords[i];
-        const capitalizedKeyword = keyword.charAt(0).toUpperCase() + keyword.slice(1);
-        const genericTopic = `Discussion about ${capitalizedKeyword}`;
-        
-        if (!finalTopics.includes(genericTopic)) {
-          finalTopics.push(genericTopic);
-        }
-      }
-    }
-    
-    // Return formatted topics or default message
-    return finalTopics.length > 0 ? 
-      finalTopics : 
-      ["The conversation didn't contain clearly identifiable topics"];
-  };
-
-  // Function to extract potential action items from transcript with better accuracy
-  const extractActionItems = (transcript) => {
-    console.log("Extracting action items from transcript");
-    
-    if (!transcript || transcript.trim().length < 20) {
-      return [];
-    }
-    
-    // Split transcript into sentences
-    const sentences = transcript.split(/[.!?]+/).filter(s => s.trim().length > 15);
-    
-    // Action item indicator patterns
-    const actionIndicators = [
-      { pattern: /need to\s+([\w\s,]+)/i, priority: 5 }, 
-      { pattern: /should\s+([\w\s,]+)/i, priority: 4 },
-      { pattern: /have to\s+([\w\s,]+)/i, priority: 5 },
-      { pattern: /must\s+([\w\s,]+)/i, priority: 5 },
-      { pattern: /going to\s+([\w\s,]+)/i, priority: 3 },
-      { pattern: /will\s+([\w\s,]+)/i, priority: 3 },
-      { pattern: /let'?s\s+([\w\s,]+)/i, priority: 4 },
-      { pattern: /plan to\s+([\w\s,]+)/i, priority: 4 },
-      { pattern: /remember to\s+([\w\s,]+)/i, priority: 5 },
-      { pattern: /don'?t forget to\s+([\w\s,]+)/i, priority: 5 },
-      { pattern: /action item[:;]\s*([\w\s,]+)/i, priority: 10 },
-      { pattern: /task[:;]\s*([\w\s,]+)/i, priority: 10 },
-      { pattern: /assign(?:ed|ing)?\s+(?:to|for)?\s+([\w\s,]+)/i, priority: 8 },
-      { pattern: /take care of\s+([\w\s,]+)/i, priority: 7 },
-      { pattern: /responsible for\s+([\w\s,]+)/i, priority: 8 },
-      { pattern: /follow(?:ing)? up (?:on|with)?\s+([\w\s,]+)/i, priority: 6 },
-      { pattern: /create\s+([\w\s,]+)/i, priority: 3 },
-      { pattern: /implement\s+([\w\s,]+)/i, priority: 4 },
-      { pattern: /set up\s+([\w\s,]+)/i, priority: 4 },
-      { pattern: /review\s+([\w\s,]+)/i, priority: 3 },
-      { pattern: /complete\s+([\w\s,]+)/i, priority: 4 },
-      { pattern: /finish\s+([\w\s,]+)/i, priority: 4 }
-    ];
-    
-    // Time expressions to identify deadlines
-    const timeExpressions = [
-      /by (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i,
-      /by (?:tomorrow|next week|next month|tonight|today)/i,
-      /by (?:january|february|march|april|may|june|july|august|september|october|november|december)/i,
-      /by the end of (?:day|week|month|quarter|year)/i,
-      /within \d+ (?:hour|day|week|month|year)s?/i,
-      /before (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i
-    ];
-    
-    // Person indicators to identify who is assigned
-    const personIndicators = [
-      /(?:assign to|assigned to) (\w+)/i,
-      /(\w+) will (?:do|take|handle)/i,
-      /(\w+) should (?:do|take|handle)/i,
-      /(\w+) is responsible/i
-    ];
-    
-    // Extracted candidate action items with metadata
-    const candidates = [];
-    
-    sentences.forEach(sentence => {
-      let matchFound = false;
-      let highestPriority = 0;
-      let bestMatch = null;
+      // For demonstration, we'll simulate an API call to an AI service
+      // In a real implementation, you would call your backend API that uses
+      // OpenAI, Azure, or another AI service to generate the summary
       
-      for (const { pattern, priority } of actionIndicators) {
-        const match = sentence.match(pattern);
-        
-        if (match && match[1] && priority > highestPriority) {
-          matchFound = true;
-          highestPriority = priority;
-          bestMatch = {
-            text: match[1].trim(),
-            priority: priority,
-            sentence: sentence.trim(),
-            hasDeadline: timeExpressions.some(expr => sentence.match(expr)),
-            assignee: extractAssignee(sentence, personIndicators)
-          };
-        }
-      }
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      if (matchFound && bestMatch) {
-        // Format the action item text
-        let actionItemText = bestMatch.text;
-        
-        // If text is too short, use the whole sentence
-        if (actionItemText.length < 15 && bestMatch.sentence.length < 120) {
-          actionItemText = bestMatch.sentence;
-        }
-        
-        // Add assignee information if available
-        if (bestMatch.assignee) {
-          if (!actionItemText.includes(bestMatch.assignee)) {
-            actionItemText = `[${bestMatch.assignee}] ${actionItemText}`;
-          }
-        }
-        
-        // Add deadline information
-        for (const timeExpr of timeExpressions) {
-          const deadlineMatch = sentence.match(timeExpr);
-          if (deadlineMatch && !actionItemText.includes(deadlineMatch[0])) {
-            actionItemText += ` (${deadlineMatch[0]})`;
-            break;
-          }
-        }
-        
-        candidates.push({
-          text: actionItemText,
-          priority: bestMatch.priority,
-          completed: false
-        });
-      }
-    });
-    
-    // Sort by priority and limit to 5 items
-    const sortedItems = candidates
-      .sort((a, b) => b.priority - a.priority)
-      .slice(0, 5);
-    
-    return sortedItems.length > 0 ? sortedItems : [];
+      // Generate a structured summary
+      const duration = transcriptionStartTime 
+        ? Math.floor((new Date() - transcriptionStartTime) / 60000) 
+        : 1; // Default to 1 minute if no start time
+      
+      // Extract potential highlights based on common meeting phrases
+      const highlights = extractHighlights(textToSummarize);
+      
+      // Extract potential action items
+      const actions = extractActionItems(textToSummarize);
+      
+      // Generate overview
+      const overview = generateOverview(textToSummarize);
+      
+      // Generate summary text
+      const summary = `## Meeting Summary
+**Duration:** ${duration} minutes
+**Date:** ${new Date().toLocaleDateString()}
+**Time:** ${new Date().toLocaleTimeString()}
+
+### Overview
+${overview}
+
+### Key Points
+${highlights.map(h => `- ${h}`).join('\n')}
+
+### Action Items
+${actions.map(a => `- ${a}`).join('\n')}`;
+      
+      console.log("Generated summary:", summary);
+      setMeetingSummary(summary);
+      setMeetingHighlights(highlights);
+      setActionItems(actions);
+      setLoadingSummary(false);
+      
+    } catch (error) {
+      console.error('Error generating meeting summary:', error);
+      toast.error('Failed to generate meeting summary');
+      setLoadingSummary(false);
+    }
   };
 
-  // Helper function to extract assignee from sentence
-  const extractAssignee = (sentence, personIndicators) => {
-    for (const pattern of personIndicators) {
-      const match = sentence.match(pattern);
-      if (match && match[1]) {
-        return match[1];
-      }
-    }
+  // Download meeting summary
+  const downloadMeetingSummary = () => {
+    if (!meetingSummary) return;
     
-    // Try to find common names in the sentence
-    const words = sentence.split(/\s+/);
-    for (const word of words) {
-      // Look for capitalized words that might be names
-      if (word.length > 1 && word[0] === word[0].toUpperCase() && word[1] === word[1].toLowerCase()) {
-        // Exclude sentence beginnings and common words
-        if (words.indexOf(word) > 0 && !["I", "We", "The", "This", "That", "These", "Those"].includes(word)) {
-          return word;
-        }
-      }
-    }
+    const element = document.createElement('a');
+    const file = new Blob([meetingSummary], {type: 'text/markdown'});
+    element.href = URL.createObjectURL(file);
+    element.download = `meeting-summary-${new Date().toISOString().slice(0, 10)}.md`;
+    document.body.appendChild(element);
+    element.click();
+    setTimeout(() => {
+      document.body.removeChild(element);
+    }, 100);
     
-    return null;
+    toast.success('Meeting summary downloaded');
   };
 
-  // Toggle AI Summarizer function - starts/stops transcription and generates summary
-  const toggleAISummarizer = () => {
-    if (isTranscribing) {
-      // If already transcribing, stop and generate summary
-      if (speechRecognition) {
-        try {
-          console.log("Stopping speech recognition and generating summary...");
-          speechRecognition.stop();
-          setIsTranscribing(false);
-          showNotificationMessage("Recording stopped. Generating meeting summary...", "info");
-          
-          // Generate summary from transcript if we have segments
-          if (transcriptSegments.length > 0) {
-            console.log(`Found ${transcriptSegments.length} transcript segments, generating summary...`);
-            getTranscriptSummary();
-          } else {
-            console.error("No transcript segments available to summarize");
-            showNotificationMessage("Not enough conversation to summarize. Please speak during recording.", "warning");
-            setShowSummaryModal(true);
-            setMeetingSummary("Not enough conversation to summarize. Please speak clearly during recording.");
-          }
-        } catch (error) {
-          console.error("Error stopping speech recognition:", error);
-          showNotificationMessage("Error stopping recording", "error");
-        }
-      }
-    } else {
-      // Start transcribing
-      if (!speechRecognition) {
-        console.error("No speech recognition available");
-        showNotificationMessage("Speech recognition not available in your browser. Try Chrome or Edge.", "error");
-        return;
-      }
-
-      try {
-        console.log("Starting speech recognition...");
-        // Reset previous transcript segments if any
-        setTranscriptSegments([]);
-        setRecognizedTopics([]);
-        setActionItems([]);
-        
-        // Start the speech recognition
-        speechRecognition.start();
-        setIsTranscribing(true);
-        setTranscriptionEnabled(true);
-        
-        // Show notification with instructions for microphone access
-        showNotificationMessage("AI summarizer activated - recording conversation. Please speak clearly and allow microphone access. Click again to stop and generate summary.", "success");
-        
-        // Check if recording started successfully
-        setTimeout(() => {
-          if (isTranscribing && transcriptSegments.length === 0) {
-            console.log("Speech recognition started but no segments detected yet - this is normal");
-          }
-        }, 5000);
-      } catch (error) {
-        console.error("Error starting speech recognition:", error);
-        showNotificationMessage(`Failed to activate AI summarizer: ${error.message}. Make sure you've granted microphone permissions.`, "error");
-      }
-    }
+  // Copy meeting summary to clipboard
+  const copyMeetingSummary = () => {
+    if (!meetingSummary) return;
+    
+    navigator.clipboard.writeText(meetingSummary)
+      .then(() => toast.success('Meeting summary copied to clipboard'))
+      .catch(() => toast.error('Failed to copy meeting summary'));
   };
 
   // Show notification message
@@ -1289,132 +1207,6 @@ useEffect(() => {
     }
   }, [logVideoState]);
 
-  // Copy summary to clipboard
-  const copySummary = () => {
-    if (meetingSummary) {
-      navigator.clipboard.writeText(meetingSummary).then(() => {
-        setSummaryJustCopied(true);
-        setTimeout(() => setSummaryJustCopied(false), 2000);
-        showNotificationMessage("Summary copied to clipboard", "success");
-      }).catch(err => {
-        console.error("Failed to copy text: ", err);
-        showNotificationMessage("Failed to copy to clipboard", "error");
-      });
-    }
-  };
-
-  // Add translation function
-  const translateSummary = async (targetLanguage) => {
-    if (!meetingSummary) return;
-    
-    setIsTranslating(true);
-    try {
-      console.log(`Translating summary to ${targetLanguage}...`);
-      
-      const apiUrl = 'http://localhost:3001/api/translate';
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          text: meetingSummary,
-          targetLanguage 
-        }),
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setTranslatedSummary(data.translatedText);
-        setTranslationLanguage(targetLanguage);
-        showNotificationMessage(`Summary translated to ${getLanguageName(targetLanguage)}`, "success");
-      } else {
-        const error = await response.json();
-        throw new Error(error.details || error.error || "Translation failed");
-      }
-    } catch (error) {
-      console.error("Translation error:", error);
-      showNotificationMessage(`Translation failed: ${error.message}`, "error");
-      // If translation fails, keep using the original summary
-      setTranslatedSummary("");
-    } finally {
-      setIsTranslating(false);
-    }
-  };
-
-  // Helper to get language name from code
-  const getLanguageName = (code) => {
-    const languages = {
-      en: "English",
-      es: "Spanish",
-      fr: "French",
-      de: "German",
-      it: "Italian",
-      pt: "Portuguese",
-      ru: "Russian",
-      zh: "Chinese",
-      ja: "Japanese",
-      ko: "Korean",
-      hi: "Hindi"
-    };
-    return languages[code] || code;
-  };
-
-  // Enhanced function to download summary with better formatting
-  const downloadSummary = () => {
-    const content = generateSummaryContent(meetingSummary, recognizedTopics, actionItems);
-    
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    
-    const date = new Date().toISOString().split('T')[0];
-    a.download = `meeting-summary-${date}.txt`;
-    a.href = url;
-    a.click();
-    
-    URL.revokeObjectURL(url);
-    toast.success('Summary downloaded successfully!');
-  };
-
-  // Helper function to generate formatted summary content
-  const generateSummaryContent = (summary, topics, actions) => {
-    const date = new Date().toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-    
-    const time = new Date().toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-    
-    let content = `MEETING SUMMARY - ${date} at ${time}\n\n`;
-    
-    // Add summary text
-    content += `${summary}\n\n`;
-    
-    // Add topics if available
-    if (topics && topics.length > 0) {
-      content += `DISCUSSED TOPICS:\n`;
-      topics.forEach(topic => {
-        content += `• ${topic}\n`;
-      });
-      content += '\n';
-    }
-    
-    // Add action items if available
-    if (actions && actions.length > 0) {
-      content += `ACTION ITEMS:\n`;
-      actions.forEach(item => {
-        content += `[ ] ${item}\n`;
-      });
-    }
-    
-    return content;
-  };
-
   // End call and navigate back
   const handleEndCall = () => {
     // Stop all streams
@@ -1448,433 +1240,506 @@ useEffect(() => {
 
   const navigate = useNavigate();
 
-  const toggleActionItemComplete = (index) => {
-    setActionItems(prevItems => {
-      const newItems = [...prevItems];
-      newItems[index] = {
-        ...newItems[index],
-        completed: !newItems[index].completed
-      };
-      return newItems;
-    });
+  // Monitor connection quality (simulated for now)
+  const monitorConnectionQuality = useCallback(() => {
+    const qualities = ['excellent', 'good', 'poor'];
+    const randomQuality = () => {
+      // Weighted random to favor excellent and good over poor
+      const rand = Math.random();
+      if (rand < 0.6) return 'excellent';
+      if (rand < 0.9) return 'good';
+      return 'poor';
+    };
+    
+    const intervalId = setInterval(() => {
+      setConnectionQuality(randomQuality());
+    }, 10000); // Check every 10 seconds
+    
+    return () => clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    const cleanup = monitorConnectionQuality();
+    return cleanup;
+  }, [monitorConnectionQuality]);
+
+  // Add meeting info state
+  const [showMeetingInfo, setShowMeetingInfo] = useState(false);
+  const [meetingCode, setMeetingCode] = useState('');
+  
+  // Generate a meeting code on component mount
+  useEffect(() => {
+    // Generate a random meeting code like Google Meet (3 groups of 3 letters)
+    const generateMeetingCode = () => {
+      const chars = 'abcdefghijkmnpqrstuvwxyz';
+      let code = '';
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+          code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        if (i < 2) code += '-';
+      }
+      return code;
+    };
+    
+    setMeetingCode(generateMeetingCode());
+  }, []);
+  
+  // Toggle meeting info panel
+  const toggleMeetingInfo = () => {
+    setShowMeetingInfo(!showMeetingInfo);
+  };
+  
+  // Copy meeting link to clipboard
+  const copyMeetingLink = () => {
+    const link = `${window.location.origin}/meeting/${meetingCode}`;
+    navigator.clipboard.writeText(link)
+      .then(() => {
+        toast.success('Meeting link copied to clipboard');
+      })
+      .catch(err => {
+        console.error('Failed to copy meeting link:', err);
+        toast.error('Failed to copy meeting link');
+      });
   };
 
   return (
     <div className="video-conference">
-      {/* Transcription indicator - shows when recording is active */}
-      {isTranscribing && (
-        <div className="transcription-indicator">
-          <span className="pulse-dot"></span>
-          <span className="recording-text">Recording conversation</span>
+      {/* Video background with gradient overlay */}
+      <div className="video-background-overlay"></div>
+      
+      {/* Top bar with meeting info and connection quality */}
+      <div className="top-bar">
+        <div className="connection-quality">
+          <div className={`quality-indicator quality-${connectionQuality}`}></div>
+          <span className="quality-text">
+            {connectionQuality === 'excellent' ? 'Excellent' : 
+             connectionQuality === 'good' ? 'Good' : 
+             'Poor'}
+          </span>
         </div>
-      )}
-
-      <div className="meeting-header">
-        <div className="meeting-info">
-          <button className="back-button" onClick={() => navigate("/dashboard")}>
-            <ArrowLeft size={18} />
-          </button>
-          <h1>{projectName || "Meeting"}</h1>
-          <div className="meeting-duration">
-            <Clock size={14} />
-            <span>{formatMeetingTime(meetingTime)}</span>
-          </div>
-        </div>
-        <div className="meeting-controls">
+        
+        <div className="meeting-info-bar">
+          <div className="meeting-name">Team Meeting</div>
           <button 
-            className="layout-toggle-button" 
+            className="meeting-info-btn"
+            onClick={toggleMeetingInfo}
+            title="Meeting information"
+          >
+            <Info size={20} />
+          </button>
+        </div>
+        
+        <div className="top-right-actions">
+          <div className="meeting-timer">
+            {formatMeetingTime(meetingTime)}
+          </div>
+          <button 
+            className="layout-toggle-btn"
             onClick={toggleLayout}
             title="Change layout"
           >
-            <Layout size={18} />
+            <Layout size={20} />
           </button>
         </div>
       </div>
-
-      {/* Video Grid */}
-      <div className={`video-grid layout-${layoutMode} ${screenSharing ? 'screen-active' : ''}`}>
-        {screenSharing && (
-          <div className="screen-share-container">
-            <video
-              ref={screenVideo}
-              autoPlay
-              playsInline
-              className="screen-share-video"
-            />
-            <div className="debug-overlay">
-              {!screenStream && <p className="debug-text">No screen stream available</p>}
-            </div>
-          </div>
-        )}
-        
-        <div className={`participants-videos layout-${layoutMode}`}>
-          {participants.map((participant) => {
-            const isLocal = participant.id === socket.id;
-            
-            if (isLocal) {
-              return (
-                <div 
-                  key={participant.id} 
-                  className={`video-box ${activeSpeaker === participant.id ? 'active-speaker' : ''} ${!participant.cameraOn ? 'camera-off' : ''}`}
-                >
-                  {participant.cameraOn ? (
-                    <>
-                      <video
-                        ref={myVideo}
-                        autoPlay
-                        playsInline
-                        muted
-                        className="mirror"
-                      />
-                      {!stream && <div className="debug-overlay"><p className="debug-text">No camera stream</p></div>}
-                    </>
-                  ) : (
-                    <div className="avatar-placeholder">
-                      <div className="avatar-circle">
-                        {participant.name.charAt(0).toUpperCase()}
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div className="participant-info">
-                    <span className="participant-name">
-                      {participant.name} (You)
-                    </span>
-                    <div className="participant-status">
-                      {!participant.micOn && <MicOff size={16} className="status-icon muted" />}
-                    </div>
-                  </div>
-                </div>
-              );
-            } else {
-              // Remote participant
-              const remoteStream = remoteStreams.find(s => s.userId === participant.id);
-              return (
-                <div 
-                  key={participant.id} 
-                  className={`video-box ${activeSpeaker === participant.id ? 'active-speaker' : ''} ${!participant.cameraOn ? 'camera-off' : ''}`}
-                >
-                  {participant.cameraOn && remoteStream ? (
-                    <video
-                      ref={(el) => handleRemoteVideoRef(el, remoteStream)}
-                      autoPlay
-                      playsInline
-                    />
-                  ) : (
-                    <div className="avatar-placeholder">
-                      <div className="avatar-circle">
-                        {participant.name.charAt(0).toUpperCase()}
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div className="participant-info">
-                    <span className="participant-name">
-                      {participant.name}
-                    </span>
-                    <div className="participant-status">
-                      {!participant.micOn && <MicOff size={16} className="status-icon muted" />}
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-          })}
-        </div>
-      </div>
-
-      {/* Call Controls - Simplified */}
-      <div className="call-controls">
-        <button 
-          className={`control-btn mic-btn ${!micOn ? 'off' : ''}`} 
-          onClick={toggleMic}
-          title={micOn ? "Mute microphone" : "Unmute microphone"}
-        >
-          {micOn ? <Mic size={20} /> : <MicOff size={20} />}
-        </button>
-        
-        <button 
-          className={`control-btn camera-btn ${!cameraOn ? 'off' : ''}`} 
-          onClick={toggleCamera}
-          title={cameraOn ? "Turn off camera" : "Turn on camera"}
-        >
-          {cameraOn ? <Video size={20} /> : <VideoOff size={20} />}
-        </button>
-
-        <button 
-          className={`control-btn share-btn ${screenSharing ? 'active' : ''}`} 
-          onClick={toggleScreenShare}
-          title={screenSharing ? "Stop sharing" : "Share screen"}
-        >
-          {screenSharing ? <StopCircle size={20} /> : <Share2 size={20} />}
-        </button>
-
-        <button 
-          className={`control-btn chat-btn`} 
-          onClick={toggleChat}
-          title="Toggle chat"
-        >
-          <MessageSquare size={20} />
-        </button>
-
-        <button 
-          className={`control-btn recording-btn ${recording ? 'active' : ''}`} 
-          onClick={toggleRecording}
-          title={recording ? "Stop recording" : "Start recording"}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <circle cx="12" cy="12" r="3"></circle>
-          </svg>
-        </button>
-        
-        <button 
-          className={`control-btn ai-summarizer ${isTranscribing ? 'active' : ''} ${loadingSummary ? 'loading' : ''}`}
-          onClick={toggleAISummarizer}
-          title={isTranscribing ? "Stop recording and generate summary" : "Start AI meeting summarizer"}
-          disabled={loadingSummary}
-        >
-          {isTranscribing ? (
-            <>
-              <span className="recording-indicator"></span>
-              <FileText size={20} />
-              <span className="recording-text">Recording...</span>
-            </>
-          ) : (
-            <FileText size={20} />
-          )}
-        </button>
-        
-        <button 
-          className="control-btn end-call-btn" 
-          onClick={handleEndCall}
-          title="End call"
-        >
-          <Phone size={20} />
-        </button>
-      </div>
-
-      {/* Participants Sidebar */}
-      {showParticipants && (
-        <div className="participants-sidebar">
-          <div className="sidebar-header">
-            <h3>
-              <Users size={16} className="sidebar-icon" />
-              Participants ({participants.length})
-            </h3>
+      
+      {/* Meeting info panel */}
+      {showMeetingInfo && (
+        <div className="meeting-info-panel">
+          <div className="meeting-info-header">
+            <h3>Meeting information</h3>
             <button 
-              className="close-sidebar" 
-              onClick={toggleParticipants}
-              aria-label="Close participants panel"
+              className="close-btn"
+              onClick={toggleMeetingInfo}
+              title="Close"
             >
-              <XCircle size={18} />
+              <X size={20} />
             </button>
           </div>
-          
-          <div className="participant-list">
-            {participants.map((participant) => (
-              <div key={participant.id} className="participant-item">
-                <div className="participant-item-name">
-                  {participant.name} {participant.id === socket.id && "(You)"}
-                </div>
-                <div className="status-icons">
-                  {!participant.micOn && <MicOff size={16} className="status-icon mic-off" />}
-                  {!participant.cameraOn && <VideoOff size={16} className="status-icon camera-off" />}
-                </div>
-              </div>
-            ))}
+          <div className="meeting-info-content">
+            <div className="meeting-code-section">
+              <span className="meeting-code-label">Meeting code</span>
+              <div className="meeting-code">{meetingCode}</div>
+            </div>
+            <button 
+              className="copy-link-btn"
+              onClick={copyMeetingLink}
+            >
+              <Copy size={16} />
+              <span>Copy meeting link</span>
+            </button>
           </div>
         </div>
       )}
 
-      {/* Chat Sidebar */}
-      {showChat && (
-        <div className="chat-sidebar">
-          <div className="sidebar-header">
-            <h3>
-              <MessageSquare size={16} className="sidebar-icon" />
-              Meeting Chat
-            </h3>
+      {/* Main Video Grid */}
+      <div className={`video-grid ${screenSharing ? 'screen-active' : ''} layout-${layoutMode}`}>
+        {screenSharing ? (
+          // Screen sharing layout
+          <div className="screen-sharing-layout">
+            {/* Main screen share display */}
+            <div className="screen-share-container">
+              <video
+                ref={screenVideoRef}
+                autoPlay
+                playsInline
+                className="screen-share-video"
+              />
+              <div className="screen-share-label">
+                Your screen
+              </div>
+            </div>
+            
+            {/* Video feeds in sidebar when screen sharing */}
+            <div className="video-feeds-sidebar">
+              {/* Local video */}
+              <div className="sidebar-video local-video-container">
+                <video
+                  ref={myVideo}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="local-video"
+                />
+                
+                {!cameraOn && (
+                  <div className="video-placeholder">
+                    <div className="avatar-circle-small">
+                      {participants.find(p => p.id === socket.id)?.name.charAt(0).toUpperCase() || 'U'}
+                    </div>
+                  </div>
+                )}
+                
+                <div className="local-video-overlay">
+                  <div className="video-label">
+                    {participants.find(p => p.id === socket.id)?.name || 'You'} {micOn ? '' : '(Muted)'}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Remote participants */}
+              {participants
+                .filter(p => p.id !== socket.id)
+                .map(participant => (
+                  <div key={participant.id} className="sidebar-video participant-tile">
+                    <video
+                      ref={el => {
+                        if (el && remoteStreams.find(s => s.userId === participant.id)) {
+                          el.srcObject = remoteStreams.find(s => s.userId === participant.id).stream;
+                          el.play().catch(err => console.error("Error playing remote video:", err));
+                        }
+                      }}
+                      autoPlay
+                      playsInline
+                      className="participant-tile-video"
+                    />
+                    
+                    {(!participant.cameraOn || !remoteStreams.find(s => s.userId === participant.id)) && (
+                      <div className="video-placeholder">
+                        <div className="avatar-circle-small">
+                          {participant.name.charAt(0).toUpperCase()}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="participant-tile-info">
+                      <div className="participant-tile-name">
+                        {participant.name}
+                      </div>
+                      <div className="participant-tile-status">
+                        {!participant.micOn && (
+                          <MicOff size={12} className="participant-tile-status-icon muted" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ) : (
+          // Normal video grid layout when not screen sharing
+          <>
+            {/* Local video container */}
+            <div className="local-video-container">
+              <video
+                ref={myVideo}
+                autoPlay
+                playsInline
+                muted
+                className={`local-video ${!cameraOn ? 'hidden' : ''}`}
+              />
+              
+              {!cameraOn && (
+                <div className="video-placeholder">
+                  <div className="avatar-circle">
+                    {participants.find(p => p.id === socket.id)?.name.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                </div>
+              )}
+              
+              <div className="local-video-overlay">
+                <div className="video-label">
+                  {participants.find(p => p.id === socket.id)?.name || 'You'} {micOn ? '' : '(Muted)'}
+                </div>
+              </div>
+            </div>
+
+            {/* Remote participants */}
+            <div className="participants-videos">
+              {participants
+                .filter(p => p.id !== socket.id)
+                .map(participant => renderParticipantVideo(participant))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Floating Action Menu */}
+      <div className="floating-action-menu">
+        <button 
+          className={`floating-action-btn ${showParticipants ? 'active' : ''}`}
+          onClick={toggleParticipants}
+          title="Show participants"
+        >
+          <Users size={20} />
+        </button>
+        <button 
+          className={`floating-action-btn ${showChat ? 'active' : ''}`}
+          onClick={toggleChat}
+          title="Show chat"
+        >
+          <MessageSquare size={20} />
+        </button>
+        <button 
+          className={`floating-action-btn ${isTranscribing ? 'active' : ''}`}
+          onClick={toggleAISummarizer}
+          title="AI Meeting Summary"
+        >
+          <FileText size={20} />
+        </button>
+      </div>
+
+      {/* Call Controls - Google Meet style */}
+      <div className="call-controls google-meet-controls">
+        <button
+          className={`control-btn ${micOn ? '' : 'off'}`}
+          onClick={toggleMic}
+          title={micOn ? "Turn off microphone" : "Turn on microphone"}
+        >
+          {micOn ? <Mic size={24} /> : <MicOff size={24} />}
+          <span className="control-btn-label">{micOn ? "Mic" : "Mic off"}</span>
+        </button>
+        <button
+          className={`control-btn ${cameraOn ? '' : 'off'}`}
+          onClick={toggleCamera}
+          title={cameraOn ? "Turn off camera" : "Turn on camera"}
+        >
+          {cameraOn ? <Video size={24} /> : <VideoOff size={24} />}
+          <span className="control-btn-label">{cameraOn ? "Camera" : "Camera off"}</span>
+        </button>
+        <button
+          className={`control-btn ${screenSharing ? 'active' : ''}`}
+          onClick={toggleScreenShare}
+          title={screenSharing ? "Stop sharing screen" : "Share screen"}
+        >
+          <Share2 size={24} />
+          <span className="control-btn-label">{screenSharing ? "Stop" : "Present"}</span>
+        </button>
+        <button
+          className={`control-btn ${recording ? 'active' : ''}`}
+          onClick={toggleRecording}
+          title={recording ? "Stop recording" : "Start recording"}
+        >
+          <StopCircle size={24} />
+          <span className="control-btn-label">{recording ? "Stop" : "Record"}</span>
+        </button>
+        <button
+          className="control-btn more-options-btn"
+          onClick={() => navigate(-1)}
+          title="End call"
+        >
+          <Phone size={24} />
+          <span className="control-btn-label">End</span>
+        </button>
+      </div>
+
+      {/* Participants panel with Google Meet style */}
+      {showParticipants && (
+        <div className="participants-panel">
+          <div className="panel-header">
+            <h3>People ({participants.length})</h3>
             <button 
-              className="close-sidebar" 
-              onClick={toggleChat}
-              aria-label="Close chat panel"
+              className="close-btn"
+              onClick={toggleParticipants}
+              title="Close"
             >
-              <XCircle size={18} />
+              <X size={20} />
+            </button>
+          </div>
+          
+          <div className="panel-content">
+            <div className="participants-list">
+              {participants.map(participant => (
+                <div key={participant.id} className="participant-item">
+                  <div className="participant-avatar-small">
+                    {participant.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="participant-details">
+                    <div className="participant-name">
+                      {participant.name} {participant.id === socket.id && ' (You)'}
+                    </div>
+                    <div className="participant-status-icons">
+                      {!participant.micOn && (
+                        <MicOff size={16} className="status-icon muted" />
+                      )}
+                      {!participant.cameraOn && (
+                        <VideoOff size={16} className="status-icon" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chat panel */}
+      {showChat && (
+        <div className="chat-panel">
+          <div className="panel-header">
+            <h3>Chat</h3>
+            <button 
+              className="close-btn"
+              onClick={toggleChat}
+              title="Close"
+            >
+              <X size={20} />
             </button>
           </div>
           
           <div className="chat-messages" ref={chatContainerRef}>
-            {chatMessages.length === 0 ? (
-              <div className="empty-chat">
-                <p>No messages yet</p>
-                <p className="empty-chat-subtext">Be the first to send a message</p>
-              </div>
-            ) : (
-              chatMessages.map((msg, index) => (
-                <div 
-                  key={index} 
-                  className={`chat-message ${msg.isLocal ? 'local-message' : 'remote-message'}`}
-                >
-                  <div className="message-sender">{msg.sender}</div>
-                  <div className="message-content">{msg.content}</div>
-                  <div className="message-time">
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
+            {chatMessages.map((message, index) => (
+              <div key={index} className="chat-message">
+                <div className="message-sender">
+                  {message.sender === participants.find(p => p.id === socket.id)?.name ? 'You' : message.sender}
                 </div>
-              ))
-            )}
+                <div className={`message-content ${message.sender === participants.find(p => p.id === socket.id)?.name ? 'own' : ''}`}>
+                  {message.content}
+                </div>
+              </div>
+            ))}
           </div>
-
-          <form className="chat-input-form" onSubmit={sendChatMessage}>
-            <input 
-              type="text" 
-              placeholder="Type a message..." 
-              value={newMessage} 
-              onChange={(e) => setNewMessage(e.target.value)}
+          
+          <div className="chat-input-container">
+            <input
+              type="text"
               className="chat-input"
+              placeholder="Send a message to everyone"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()}
             />
-            <button type="submit" className="chat-send-button">
+            <button 
+              className="send-message-btn"
+              onClick={sendChatMessage}
+              disabled={!newMessage.trim()}
+            >
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13"></line>
                 <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
               </svg>
             </button>
-          </form>
+          </div>
         </div>
       )}
 
-      {/* Summary modal */}
+      {/* AI Meeting Summary Modal */}
       {showSummaryModal && (
-        <div className="meeting-summary-modal">
-          <div className="summary-content">
-            <div className="summary-header">
-              <h3>Meeting Summary</h3>
+        <div className="ai-meeting-summarizer-modal-overlay">
+          <div className="ai-meeting-summarizer-modal-content">
+            <div className="ai-meeting-summarizer-modal-header">
+              <h3>AI Meeting Summary</h3>
               <button 
-                className="close-summary" 
-                onClick={() => {
-                  setShowSummaryModal(false);
-                  setTranslatedSummary(null);
-                }}
+                className="ai-meeting-summarizer-close-btn"
+                onClick={() => setShowSummaryModal(false)}
+                title="Close"
               >
                 <X size={20} />
               </button>
             </div>
-
-            <div className="summary-text">
-              {/* Summary text */}
-              {isLoadingSummary ? (
-                <div className="loading-summary">
-                  <div className="spinner"></div>
+            
+            <div className="ai-meeting-summarizer-modal-body">
+              {loadingSummary ? (
+                <div className="ai-meeting-summarizer-loading-spinner">
+                  <Loader size={32} className="ai-meeting-summarizer-spinner" />
                   <p>Generating summary...</p>
                 </div>
-              ) : isTranslating ? (
-                <div className="loading-summary">
-                  <div className="spinner"></div>
-                  <p>Translating summary...</p>
-                </div>
               ) : (
-                <div>
-                  <p>{translatedSummary || meetingSummary}</p>
+                <div className="ai-meeting-summarizer-meeting-summary">
+                  <div className="ai-meeting-summarizer-summary-tabs">
+                    <button className="ai-meeting-summarizer-summary-tab active">Summary</button>
+                    <button className="ai-meeting-summarizer-summary-tab">Highlights</button>
+                    <button className="ai-meeting-summarizer-summary-tab">Action Items</button>
+                    <button className="ai-meeting-summarizer-summary-tab">Transcript</button>
+                  </div>
                   
-                  {/* Display recognized topics if not in translated view */}
-                  {recognizedTopics.length > 0 && !translatedSummary && (
-                    <div className="topics-section">
-                      <h4>Topics Discussed:</h4>
-                      <ul className="topics-list-display">
-                        {recognizedTopics.map((topic, index) => (
-                          <li key={index} className="topic-item">{topic}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  <div className="ai-meeting-summarizer-summary-content ai-meeting-summarizer-markdown-content">
+                    {meetingSummary ? (
+                      <div className="markdown-content">
+                        {meetingSummary.split('\n').map((line, index) => {
+                          if (line.startsWith('## ')) {
+                            return <h2 key={index}>{line.replace('## ', '')}</h2>;
+                          } else if (line.startsWith('### ')) {
+                            return <h3 key={index}>{line.replace('### ', '')}</h3>;
+                          } else if (line.startsWith('- ')) {
+                            return <li key={index}>{line.replace('- ', '')}</li>;
+                          } else if (line.trim() === '') {
+                            return <br key={index} />;
+                          } else {
+                            return <p key={index}>{line}</p>;
+                          }
+                        })}
+                      </div>
+                    ) : (
+                      <p>No summary available yet. Start AI summarizer to generate a summary.</p>
+                    )}
+                  </div>
                   
-                  {/* Action items section */}
-                  {actionItems.length > 0 && !translatedSummary && (
-                    <div className="action-items-section">
-                      <h4>Action Items:</h4>
-                      <ul className="action-items-list">
-                        {actionItems.map((item, index) => (
-                          <li key={index} className="action-item">
-                            <input
-                              type="checkbox"
-                              id={`action-item-${index}`}
-                              checked={item.completed || false}
-                              onChange={() => toggleActionItemComplete(index)}
-                            />
-                            <label htmlFor={`action-item-${index}`}>
-                              {item.text || item}
-                            </label>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  <div className="ai-meeting-summarizer-summary-actions">
+                    <button 
+                      className="ai-meeting-summarizer-summary-action-btn"
+                      onClick={copyMeetingSummary}
+                      disabled={!meetingSummary}
+                    >
+                      <Copy size={16} />
+                      <span>Copy to clipboard</span>
+                    </button>
+                    <button 
+                      className="ai-meeting-summarizer-summary-action-btn"
+                      onClick={downloadMeetingSummary}
+                      disabled={!meetingSummary}
+                    >
+                      <Download size={16} />
+                      <span>Download as markdown</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
-
-            {/* Summary actions */}
-            <div className="summary-actions">
-              <button 
-                className="download-summary" 
-                onClick={downloadSummary}
-              >
-                <i className="fas fa-download"></i> Download Summary
-              </button>
-              <button 
-                className="copy-summary" 
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    generateSummaryContent(meetingSummary, recognizedTopics, actionItems)
-                  );
-                  toast.success("Summary copied to clipboard!");
-                }}
-              >
-                <i className="fas fa-copy"></i> Copy to Clipboard
-              </button>
-            </div>
           </div>
         </div>
       )}
 
-      {/* Notification */}
-      {showNotification && (
-        <div className={`notification notification-${notificationType}`}>
-          {notificationType === 'success' && <CheckCircle size={16} className="notification-icon" />}
-          {notificationType === 'error' && <AlertCircle size={16} className="notification-icon" />}
-          {notificationType === 'info' && <div className="notification-icon info-icon">i</div>}
-          <span>{notificationMessage}</span>
-        </div>
-      )}
-
-      {/* Loading Overlay for Summary */}
-      {loadingSummary && (
-        <div className="loading-overlay">
-          <div className="loading-spinner"></div>
-          <p>Generating meeting summary...</p>
-        </div>
-      )}
-
-      {/* Topic Indicator */}
-      {recognizedTopics.length > 0 && (
-        <div className="topics-indicator">
-          <div className="topics-header">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
-            </svg>
-            <span>Topics Detected:</span>
-          </div>
-          <div className="topics-list">
-            {recognizedTopics.slice(0, 3).map((topic, index) => (
-              <div key={index} className="topic-tag">{topic}</div>
-            ))}
-            {recognizedTopics.length > 3 && (
-              <div className="topic-tag more-topics">+{recognizedTopics.length - 3} more</div>
-            )}
-          </div>
+      {/* Transcription indicator */}
+      {isTranscribing && (
+        <div className="transcription-indicator">
+          <div className="pulse-dot"></div>
+          <span>Recording meeting...</span>
+          {interimTranscript && (
+            <span className="interim-transcript">{interimTranscript}</span>
+          )}
         </div>
       )}
     </div>
