@@ -16,6 +16,7 @@ import SignIn from '../../components/SignIn';
 import SignUp from '../../components/SignUp';
 import Navbar from './components/Navbar';
 import ExploreMenu from '../../components/animations/ExploreMenu';
+import ImageCarousel from '../../components/ImageCarousel';
 
 // Register GSAP plugins
 gsap.registerPlugin(ScrollTrigger);
@@ -35,6 +36,24 @@ const SectionOverlay = styled.div`
   position: relative;
   background: linear-gradient(to bottom, rgba(15, 15, 15, 0.7), #0f0f0f);
   z-index: 4;
+`;
+
+const CarouselSection = styled.section`
+  padding: 4rem 0 0 0;
+  background-color: #0f0f0f;
+  position: relative;
+  z-index: 5;
+  margin-bottom: 0;
+  
+  &::after {
+    content: '';
+    display: block;
+    height: 10px;
+    width: 100%;
+    background: linear-gradient(to bottom, #0f0f0f, rgba(15, 15, 15, 0.7));
+    margin-top: 2rem;
+    margin-bottom: 0;
+  }
 `;
 
 const ExploreContainer = styled.div`
@@ -173,8 +192,15 @@ function Home() {
       </ExploreContainer>
       
       <MainContent ref={mainRef}>
-        <Hero setSignInOpen={setSignInOpen} />
+        {/* Image Carousel Section - Moved to top */}
+        <CarouselSection>
+          <div className="container mx-auto px-4">
+            <h2 className="text-4xl font-bold mb-8 text-center fade-in">Team Collaboration</h2>
+            <ImageCarousel />
+          </div>
+        </CarouselSection>
         <TextParallax phrases={['Team', 'Sync', 'Growth']} />
+        <Hero setSignInOpen={setSignInOpen} />
         <SectionOverlay>
           <About />
         </SectionOverlay>

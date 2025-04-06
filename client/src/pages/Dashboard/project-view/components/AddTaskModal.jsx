@@ -48,7 +48,7 @@ const AddTaskModal = ({ isOpen, onClose, projectId, onTaskAdded }) => {
                 taskData, 
                 {
                     headers: { 
-                        "Authorization": `Bearer ${token}`,
+                        "authorization": token,
                         "Content-Type": "application/json"
                     }
                 }

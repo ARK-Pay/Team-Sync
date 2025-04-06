@@ -56,29 +56,6 @@ const BackgroundAnimation = styled.div`
   width: 100%;
   height: 100%;
   z-index: 1;
-
-  .blob {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(60px);
-    opacity: 0.3;
-  }
-
-  .blob-1 {
-    background: var(--primary);
-    width: 500px;
-    height: 500px;
-    top: -100px;
-    right: -100px;
-  }
-
-  .blob-2 {
-    background: var(--secondary);
-    width: 400px;
-    height: 400px;
-    bottom: -100px;
-    left: -100px;
-  }
 `;
 
 const ScrollDown = styled.div`
@@ -134,24 +111,10 @@ const Hero = () => {
   const backgroundRef = useRef(null);
   const scrollRef = useRef(null);
   
-  // Animation for the background blobs
+  // Scroll down animation
   useEffect(() => {
     if (!backgroundRef.current) return;
     
-    const blobs = backgroundRef.current.querySelectorAll('.blob');
-    
-    gsap.to(blobs, {
-      x: 'random(-30, 30)',
-      y: 'random(-30, 30)',
-      rotation: 'random(-15, 15)',
-      duration: 20,
-      ease: 'sine.inOut',
-      repeat: -1,
-      yoyo: true,
-      stagger: 0.5
-    });
-    
-    // Scroll down animation
     if (scrollRef.current) {
       gsap.to(scrollRef.current, {
         y: 10,
@@ -166,8 +129,7 @@ const Hero = () => {
   return (
     <HeroSection id="hero">
       <BackgroundAnimation ref={backgroundRef}>
-        <div className="blob blob-1"></div>
-        <div className="blob blob-2"></div>
+        {/* Blob elements removed as requested */}
       </BackgroundAnimation>
       
       <HeroContent>
