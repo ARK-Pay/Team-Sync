@@ -194,12 +194,24 @@ const MailSystem = () => {
     setShowComposeModal(true);
   };
 
-  // Expose edit draft function to window for MailViewer component
+  // Effect to handle draft editing
   useEffect(() => {
+    // Define the event handler for edit-draft custom event
+    const handleEditDraftEvent = (event) => {
+      if (event.detail) {
+        handleEditDraft(event.detail);
+      }
+    };
+    
+    // Add the event listener
+    window.addEventListener('edit-draft', handleEditDraftEvent);
+    
+    // Expose the editDraft function to the window object for direct access
     window.editDraft = handleEditDraft;
     
-    // Cleanup function
+    // Clean up on unmount
     return () => {
+      window.removeEventListener('edit-draft', handleEditDraftEvent);
       delete window.editDraft;
     };
   }, []);

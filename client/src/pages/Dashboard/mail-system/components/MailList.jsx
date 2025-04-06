@@ -137,12 +137,11 @@ const MailList = ({ emails, selectedEmail, onSelectEmail, loading, error, curren
     
     try {
       setActionLoading(prev => ({ ...prev, [email._id]: true }));
-      setShowOptions(null);
-      
       console.log('Moving draft to trash:', email._id);
       
       const token = getAuthToken();
       
+      // Use the special endpoint for moving drafts to trash
       const response = await axios({
         method: 'post',
         url: `${API_BASE_URL}/mail/move-draft-to-trash`,
@@ -157,17 +156,49 @@ const MailList = ({ emails, selectedEmail, onSelectEmail, loading, error, curren
       if (response.data.success) {
         console.log('Draft moved to trash successfully');
         if (onRefresh) {
+          console.log('Refreshing after moving draft to trash');
           onRefresh();
         }
       } else {
         console.error('Failed to move draft to trash:', response.data.message);
-        alert('Failed to move draft to trash. Please try again.');
+        alert('Failed to move draft to trash: ' + (response.data.message || 'Unknown error'));
       }
     } catch (error) {
       console.error('Error moving draft to trash:', error);
-      alert('Failed to move draft to trash. Please try again.');
+      // Provide more detailed error message
+      let errorMessage = 'Failed to move draft to trash. Please try again.';
+      if (error.response && error.response.data && error.response.data.message) {
+        errorMessage = `Failed to move draft to trash: ${error.response.data.message}`;
+      }
+      alert(errorMessage);
+      
+      // If we get a 404, try the regular move endpoint as fallback
+      if (error.response && error.response.status === 404) {
+        console.log('Trying fallback method for moving draft to trash');
+        try {
+          const token = getAuthToken();
+          const fallbackResponse = await axios({
+            method: 'put',
+            url: `${API_BASE_URL}/mail/${email._id}/move`,
+            data: { targetFolder: 'trash' },
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          });
+          
+          if (fallbackResponse.data.success) {
+            console.log('Draft moved to trash using fallback method');
+            if (onRefresh) {
+              onRefresh();
+            }
+          }
+        } catch (fallbackError) {
+          console.error('Fallback method also failed:', fallbackError);
+        }
+      }
     } finally {
       setActionLoading(prev => ({ ...prev, [email._id]: false }));
+      setShowOptions(null); // Close options menu
     }
   };
 
@@ -400,12 +431,12 @@ const MailList = ({ emails, selectedEmail, onSelectEmail, loading, error, curren
                           <button
                             onClick={(e) => handleMove(e, email, 'inbox')}
                             disabled={actionLoading[email._id]}
-                            className={`flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors ${
+                            className={`flex items-center w-full px-4 py-2 text-sm text-blue-600 hover:bg-gray-100 transition-colors ${
                               actionLoading[email._id] ? 'opacity-50 cursor-not-allowed' : ''
                             }`}
                           >
                             <Inbox className="h-4 w-4 mr-2" />
-                            Move to Inbox
+                            Restore
                           </button>
                         </>
                       ) : currentFolder === 'archived' ? (
@@ -413,12 +444,12 @@ const MailList = ({ emails, selectedEmail, onSelectEmail, loading, error, curren
                           <button
                             onClick={(e) => handleMove(e, email, 'inbox')}
                             disabled={actionLoading[email._id]}
-                            className={`flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors ${
+                            className={`flex items-center w-full px-4 py-2 text-sm text-blue-600 hover:bg-gray-100 transition-colors ${
                               actionLoading[email._id] ? 'opacity-50 cursor-not-allowed' : ''
                             }`}
                           >
                             <Inbox className="h-4 w-4 mr-2" />
-                            Unarchive to Inbox
+                            Restore
                           </button>
                           <button
                             onClick={(e) => handleMove(e, email, 'trash')}
@@ -436,10 +467,15 @@ const MailList = ({ emails, selectedEmail, onSelectEmail, loading, error, curren
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              setShowOptions(null);
+                              // Use the parent component's handler instead of window.editDraft
                               if (typeof window.editDraft === 'function') {
                                 window.editDraft(email);
+                              } else {
+                                // Fallback to dispatch a custom event that MailSystem can listen for
+                                const event = new CustomEvent('edit-draft', { detail: email });
+                                window.dispatchEvent(event);
                               }
-                              setShowOptions(null);
                             }}
                             disabled={actionLoading[email._id]}
                             className={`flex items-center w-full px-4 py-2 text-sm text-blue-600 hover:bg-gray-100 transition-colors ${

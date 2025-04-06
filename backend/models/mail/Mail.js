@@ -38,6 +38,11 @@ const mailSchema = new mongoose.Schema({
     enum: ['inbox', 'sent', 'drafts', 'trash', 'archived'], 
     default: 'inbox' 
   },
+  previousFolder: {
+    type: String,
+    enum: ['inbox', 'sent', 'drafts', 'archived'],
+    default: 'inbox'
+  },
   timestamp: { type: Date, default: Date.now }
 });
 

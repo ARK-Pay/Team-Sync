@@ -529,16 +529,7 @@ const mailController = {
       const { emailId } = req.params;
       const { targetFolder } = req.body;
       
-      console.log(`Moving email: ${emailId} to folder: ${targetFolder} for user: ${userId}`);
-      
-      // Validate target folder
-      const validFolders = ['inbox', 'sent', 'drafts', 'trash', 'archived'];
-      if (!validFolders.includes(targetFolder)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid target folder'
-        });
-      }
+      console.log(`Moving email ${emailId} to ${targetFolder} for user ${userId}`);
       
       const email = await Mail.findOne({
         _id: emailId,
@@ -555,7 +546,33 @@ const mailController = {
         });
       }
       
+      // Save the previous folder when moving to trash or archived
+      if (targetFolder === 'trash' || targetFolder === 'archived') {
+        // Don't overwrite previousFolder if already in trash or archived
+        if (email.folder !== 'trash' && email.folder !== 'archived') {
+          email.previousFolder = email.folder;
+        }
+      } 
+      // When moving from trash or archived to inbox, check if we should restore to previous folder
+      else if (targetFolder === 'inbox' && (email.folder === 'trash' || email.folder === 'archived')) {
+        // If we have a valid previous folder, use that instead of inbox
+        if (email.previousFolder && email.previousFolder !== 'trash' && email.previousFolder !== 'archived') {
+          console.log(`Restoring email from ${email.folder} to previous folder: ${email.previousFolder}`);
+          email.folder = email.previousFolder;
+          
+          await email.save();
+          
+          return res.status(200).json({
+            success: true,
+            message: `Email restored to ${email.previousFolder} successfully`,
+            data: email
+          });
+        }
+      }
+      
+      // Set the new folder
       email.folder = targetFolder;
+      
       await email.save();
       
       return res.status(200).json({
@@ -605,7 +622,8 @@ const mailController = {
           message: 'Email deleted permanently'
         });
       } else {
-        // Otherwise, move it to trash
+        // Otherwise, move it to trash and save the previous folder
+        email.previousFolder = email.folder;
         email.folder = 'trash';
         await email.save();
         
@@ -690,6 +708,9 @@ const mailController = {
         });
       }
 
+      // Save the previous folder before moving to trash
+      email.previousFolder = 'drafts';
+      
       // Move the email to trash
       email.folder = 'trash';
       await email.save();

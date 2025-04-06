@@ -374,20 +374,23 @@ const VideoConference = ({ roomId }) => {
         if (stream) {
           const videoTracks = stream.getVideoTracks();
           videoTracks.forEach(track => {
-            track.enabled = false;
+            track.stop(); // Stop the track completely instead of just disabling
           });
+          
+          // Remove video tracks from the stream but keep audio tracks
+          const audioTracks = stream.getAudioTracks();
+          const newStream = new MediaStream(audioTracks);
+          setStream(newStream);
+          
+          // Update local video element
+          if (myVideo.current) {
+            myVideo.current.srcObject = newStream;
+          }
         }
         setCameraOn(false);
         socket.emit('toggle-camera', roomId, false);
       } else {
-        // Turn camera on - completely restart video to fix black screen issue
         try {
-          // Stop all existing video tracks
-          if (stream) {
-            const videoTracks = stream.getVideoTracks();
-            videoTracks.forEach(track => track.stop());
-          }
-          
           // Get fresh video stream
           const newVideoStream = await navigator.mediaDevices.getUserMedia({ video: true });
           const newVideoTrack = newVideoStream.getVideoTracks()[0];
@@ -396,6 +399,14 @@ const VideoConference = ({ roomId }) => {
           let audioTracks = [];
           if (stream) {
             audioTracks = stream.getAudioTracks();
+          } else {
+            // If no stream exists, also get audio permission
+            try {
+              const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              audioTracks = audioStream.getAudioTracks();
+            } catch (audioError) {
+              console.error("Could not get audio:", audioError);
+            }
           }
           
           // Create a new combined stream
@@ -405,6 +416,29 @@ const VideoConference = ({ roomId }) => {
           // Update video element
           if (myVideo.current) {
             myVideo.current.srcObject = newStream;
+            
+            // Ensure video plays
+            myVideo.current.onloadedmetadata = () => {
+              myVideo.current.play().catch(err => {
+                console.error("Error playing video:", err);
+              });
+            };
+          }
+          
+          // Update peer connections with new track
+          if (peerConnections.current) {
+            Object.values(peerConnections.current).forEach(pc => {
+              const senders = pc.getSenders();
+              const videoSender = senders.find(sender => 
+                sender.track && sender.track.kind === 'video'
+              );
+              
+              if (videoSender) {
+                videoSender.replaceTrack(newVideoTrack);
+              } else {
+                pc.addTrack(newVideoTrack, newStream);
+              }
+            });
           }
           
           setCameraOn(true);
@@ -477,26 +511,19 @@ const VideoConference = ({ roomId }) => {
         socket.emit('screen-share-stopped', socket.id);
         
         // Ensure camera stays on after stopping screen share
-        if (stream) {
-          // Make sure video tracks are enabled
-          const videoTracks = stream.getVideoTracks();
-          if (videoTracks.length > 0) {
-            // Only enable if camera was previously on
-            if (cameraOn) {
-              videoTracks.forEach(track => {
-                track.enabled = true;
-              });
-            }
-          } else if (cameraOn) {
-            // If no video tracks but camera should be on, restart camera
-            restartCamera();
-          }
-          
-          // Ensure video element is properly connected to stream
-          if (myVideo.current) {
-            myVideo.current.srcObject = stream;
-            myVideo.current.play().catch(err => {
-              console.error("Error playing video after screen share:", err);
+        if (cameraOn) {
+          // If camera should be on, use our improved restart camera function
+          console.log("Restarting camera after screen share");
+          await restartCamera();
+        } else {
+          console.log("Camera was off before screen share, keeping it off");
+          // If camera was off, make sure it stays off
+          if (stream) {
+            const videoTracks = stream.getVideoTracks();
+            videoTracks.forEach(track => {
+              if (!track.stopped) {
+                track.stop();
+              }
             });
           }
         }
@@ -521,32 +548,25 @@ const VideoConference = ({ roomId }) => {
         }
         
         // Handle stream ending (user stops sharing)
-        displayStream.getVideoTracks()[0].onended = () => {
+        displayStream.getVideoTracks()[0].onended = async () => {
           setScreenSharing(false);
           setScreenStream(null);
           socket.emit('screen-share-stopped', socket.id);
           
-          // Ensure camera stays on after stopping screen share
-          if (stream) {
-            // Make sure video tracks are enabled
-            const videoTracks = stream.getVideoTracks();
-            if (videoTracks.length > 0) {
-              // Only enable if camera was previously on
-              if (cameraOn) {
-                videoTracks.forEach(track => {
-                  track.enabled = true;
-                });
-              }
-            } else if (cameraOn) {
-              // If no video tracks but camera should be on, restart camera
-              restartCamera();
-            }
-            
-            // Ensure video element is properly connected to stream
-            if (myVideo.current) {
-              myVideo.current.srcObject = stream;
-              myVideo.current.play().catch(err => {
-                console.error("Error playing video after screen share:", err);
+          // Ensure camera state is properly restored
+          if (cameraOn) {
+            // If camera should be on, use our improved restart camera function
+            console.log("Restarting camera after screen share ended");
+            await restartCamera();
+          } else {
+            console.log("Camera was off before screen share, keeping it off");
+            // If camera was off, make sure it stays off
+            if (stream) {
+              const videoTracks = stream.getVideoTracks();
+              videoTracks.forEach(track => {
+                if (!track.stopped) {
+                  track.stop();
+                }
               });
             }
           }
@@ -564,6 +584,12 @@ const VideoConference = ({ roomId }) => {
   // Helper function to restart camera
   const restartCamera = async () => {
     try {
+      // Stop any existing video tracks first
+      if (stream) {
+        const videoTracks = stream.getVideoTracks();
+        videoTracks.forEach(track => track.stop());
+      }
+      
       // Get fresh video stream
       const newVideoStream = await navigator.mediaDevices.getUserMedia({ video: true });
       const newVideoTrack = newVideoStream.getVideoTracks()[0];
@@ -572,6 +598,14 @@ const VideoConference = ({ roomId }) => {
       let audioTracks = [];
       if (stream) {
         audioTracks = stream.getAudioTracks();
+      } else {
+        // If no stream exists, also get audio permission
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          audioTracks = audioStream.getAudioTracks();
+        } catch (audioError) {
+          console.error("Could not get audio:", audioError);
+        }
       }
       
       // Create a new combined stream
@@ -581,15 +615,42 @@ const VideoConference = ({ roomId }) => {
       // Update video element
       if (myVideo.current) {
         myVideo.current.srcObject = newStream;
-        myVideo.current.play().catch(err => {
-          console.error("Error playing restarted camera:", err);
+        
+        // Ensure video plays after metadata is loaded
+        myVideo.current.onloadedmetadata = () => {
+          myVideo.current.play().catch(err => {
+            console.error("Error playing restarted camera:", err);
+          });
+        };
+      }
+      
+      // Update peer connections with new track
+      if (peerConnections.current) {
+        Object.values(peerConnections.current).forEach(pc => {
+          const senders = pc.getSenders();
+          const videoSender = senders.find(sender => 
+            sender.track && sender.track.kind === 'video'
+          );
+          
+          if (videoSender) {
+            console.log("Replacing video track in peer connection");
+            videoSender.replaceTrack(newVideoTrack);
+          } else {
+            console.log("Adding new video track to peer connection");
+            pc.addTrack(newVideoTrack, newStream);
+          }
         });
       }
       
       setCameraOn(true);
+      socket.emit('toggle-camera', roomId, true);
+      
+      console.log("Camera restarted successfully");
+      return true;
     } catch (error) {
       console.error("Error restarting camera:", error);
       toast.error("Failed to restart camera");
+      return false;
     }
   };
 
