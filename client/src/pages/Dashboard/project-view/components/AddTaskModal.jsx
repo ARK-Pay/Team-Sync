@@ -8,13 +8,16 @@ const AddTaskModal = ({ isOpen, onClose, projectId, onTaskAdded }) => {
         description: '',
         priority: '1', // Medium priority by default
         deadline: '',
-        status: '0', // To Do status by default
+        status: '0', // To Do status by default (hardcoded)
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
     const handleChange = (e) => {
         const { name, value } = e.target;
+        if (name === 'status') {
+            return;
+        }
         setTaskDetails({ ...taskDetails, [name]: value });
     };
 

@@ -58,7 +58,7 @@ const AssignedTasks = ({ projectId }) => {
         `http://localhost:3001/task/project/${projectId}/tasks`,
         {
           headers: {
-            Authorization: `Bearer ${token}`
+            Authorization: token
           }
         }
       );
@@ -108,12 +108,26 @@ const AssignedTasks = ({ projectId }) => {
   const handleStatusChange = async (taskId, newStatus) => {
     try {
       const token = localStorage.getItem('token');
+      
+      // Find the task in local state
+      const taskToUpdate = tasks.find(task => 
+        (task._id && task._id === taskId) || (task.id && task.id === taskId)
+      );
+      
+      if (!taskToUpdate) {
+        showToast("Task not found", "error");
+        return;
+      }
+      
+      // Use the correct ID field - the backend is looking for the 'id' field, not '_id'
+      const correctTaskId = taskToUpdate.id || taskId;
+      
       await axios.put(
-        `http://localhost:3001/task/${taskId}/edit-details`,
+        `http://localhost:3001/task/${correctTaskId}/edit-details`,
         { status: newStatus },
         {
           headers: {
-            Authorization: `Bearer ${token}`
+            Authorization: `${token}`
           }
         }
       );
@@ -139,7 +153,7 @@ const AssignedTasks = ({ projectId }) => {
           `http://localhost:3001/task/${taskId}`,
           {
             headers: {
-              Authorization: `Bearer ${token}`
+              Authorization: token
             }
           }
         );
@@ -177,6 +191,15 @@ const AssignedTasks = ({ projectId }) => {
     }
   };
 
+  const getStatusClass = (status) => {
+    switch (status) {
+      case "0": return "bg-yellow-100 text-yellow-800";
+      case "1": return "bg-blue-100 text-blue-800";
+      case "2": return "bg-green-100 text-green-800";
+      default: return "bg-gray-100 text-gray-800";
+    }
+  };
+
   const getPriorityText = (priority) => {
     switch (priority) {
       case "0": return "Low";
@@ -201,6 +224,14 @@ const AssignedTasks = ({ projectId }) => {
       month: '2-digit',
       year: '2-digit',
     });
+  };
+
+  const isRecentlyCreated = (task) => {
+    const taskDate = new Date(task.createdAt);
+    const now = new Date();
+    const diffTime = Math.abs(now - taskDate);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays <= 3;
   };
 
   if (isLoading) {
@@ -329,9 +360,51 @@ const AssignedTasks = ({ projectId }) => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      {getStatusIcon(task.status)}
-                      <span className="ml-2 text-sm">{getStatusText(task.status)}</span>
+                    <div className="relative group">
+                      <div className="flex items-center cursor-pointer">
+                        {getStatusIcon(task.status)}
+                        <div className="ml-2 flex items-center">
+                          <span className={`px-2 py-1 rounded-md text-sm ${getStatusClass(task.status)}`}>
+                            {getStatusText(task.status)}
+                          </span>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                      
+                      {/* Dropdown menu */}
+                      <div className="absolute z-10 mt-1 w-40 bg-white rounded-md shadow-lg hidden group-hover:block">
+                        <div className="py-1">
+                          <button 
+                            onClick={() => handleStatusChange(task.id, "0")}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${task.status === "0" ? "bg-gray-100" : ""}`}
+                          >
+                            <div className="flex items-center">
+                              <AlertTriangle className="w-4 h-4 text-yellow-500 mr-2" />
+                              <span>To Do</span>
+                            </div>
+                          </button>
+                          <button 
+                            onClick={() => handleStatusChange(task.id, "1")}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${task.status === "1" ? "bg-gray-100" : ""}`}
+                          >
+                            <div className="flex items-center">
+                              <Clock className="w-4 h-4 text-blue-500 mr-2" />
+                              <span>In Progress</span>
+                            </div>
+                          </button>
+                          <button 
+                            onClick={() => handleStatusChange(task.id, "2")}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${task.status === "2" ? "bg-gray-100" : ""}`}
+                          >
+                            <div className="flex items-center">
+                              <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                              <span>Completed</span>
+                            </div>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -389,16 +462,6 @@ const AssignedTasks = ({ projectId }) => {
                         title="Manage Assignees"
                       >
                         <Users className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          const newStatus = task.status === "2" ? "0" : (parseInt(task.status) + 1).toString();
-                          handleStatusChange(task.id, newStatus);
-                        }}
-                        className="text-green-600 hover:text-green-900"
-                        title="Change Status"
-                      >
-                        <CheckCircle className="w-5 h-5" />
                       </button>
                       <button
                         onClick={() => handleDeleteTask(task.id)}
