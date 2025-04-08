@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFolder, faTasks, faUsers, faBell, faTachometerAlt, faEnvelope } from '@fortawesome/free-solid-svg-icons';
+import { faFolder, faTasks, faUsers, faBell, faTachometerAlt, faEnvelope, faCalendar } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 import { useSetRecoilState } from 'recoil';
 import { sidebarSelection } from '../../../../store/atoms/adminDashboardAtoms';
@@ -167,6 +167,20 @@ const Sidebar = ({ isOpen, onClose }) => {
                     className={`w-5 h-5 mr-3 ${active === "mail" ? 'text-blue-600' : 'text-gray-500'}`} 
                   />
                   <span className="font-medium">Mail</span>
+                </a>
+              </li>
+
+              <li>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2.5 text-gray-700 rounded-md ${active === "calendar" ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                  onClick={() => { setSidebarSelection("calendar"); setActive("calendar"); }}
+                >
+                  <FontAwesomeIcon 
+                    icon={faCalendar} 
+                    className={`w-5 h-5 mr-3 ${active === "calendar" ? 'text-blue-600' : 'text-gray-500'}`} 
+                  />
+                  <span className="font-medium">Calendar</span>
                 </a>
               </li>
             </ul>

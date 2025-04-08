@@ -9,6 +9,7 @@ import { sidebarSelection } from '../../../store/atoms/adminDashboardAtoms';
 import ProjectView from '../project-view/ProjectView';
 import AccessManager from '../access-manager/AccessManager';
 import MailSystem from '../mail-system/MailSystem';
+import CalendarPage from '../calendar-system/CalendarPage';
 
 //project dashboard
 const ProjectDashboard = () => {
@@ -38,6 +39,8 @@ const ProjectDashboard = () => {
         return <AccessManager />;
       case 'mail':
         return <MailSystem />;
+      case 'calendar':
+        return <CalendarPage />;
       default:
         return <Hero sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />;
     }

@@ -6,7 +6,7 @@ import { authenticationState } from '../../../store/atoms/authVerifierSelector';
 import { sidebarSelection } from '../../../store/atoms/adminDashboardAtoms';
 import ChatModal from './components/ChatModal';
 import ReportModal from './components/ReportModal';
-import { MessageSquare, Video, DownloadCloud, ChevronLeft, Loader2, AlertCircle, Users, Clock, Calendar, Tag } from 'lucide-react';
+import { MessageSquare, Video, DownloadCloud, ChevronLeft, Loader2, AlertCircle, Users, Clock, Calendar, Tag, FileText } from 'lucide-react';
 import axios from 'axios';
 import AssignedTasks from './components/AssignedTasks';
 
@@ -45,6 +45,45 @@ const VideoCallButton = () => {
     >
       <Video size={18} />
       <span>Video Call</span>
+    </button>
+  );
+};
+
+// Document summarizer button component
+const DocumentSummarizerButton = () => {
+  const currentTheme = localStorage.getItem('dashboard_theme') || 'blue';
+  const navigate = useNavigate();
+  
+  // Define theme colors
+  const themes = {
+    blue: {
+      button: 'bg-blue-600 hover:bg-blue-700',
+      buttonText: 'text-white',
+    },
+    green: {
+      button: 'bg-emerald-600 hover:bg-emerald-700',
+      buttonText: 'text-white',
+    },
+    purple: {
+      button: 'bg-purple-600 hover:bg-purple-700',
+      buttonText: 'text-white',
+    },
+    amber: {
+      button: 'bg-amber-600 hover:bg-amber-700',
+      buttonText: 'text-white',
+    },
+  };
+  
+  const theme = themes[currentTheme];
+  
+  return (
+    <button 
+      onClick={() => navigate("/document-summarizer")} 
+      className={`${theme.button} ${theme.buttonText} px-4 py-2 rounded-lg shadow-md transition-colors duration-200 flex items-center gap-2`}
+      title="Summarize project documents"
+    >
+      <FileText size={18} />
+      <span>Summarize Docs</span>
     </button>
   );
 };
@@ -349,6 +388,7 @@ const ProjectView = () => {
           {/* Action buttons container */}
           <div className={`flex flex-wrap gap-2 ${theme.actionsBg} backdrop-blur-sm p-2 rounded-lg ${theme.border} shadow-sm`}>
             <VideoCallButton />
+            <DocumentSummarizerButton />
             <ChatModal />
             <ReportModal />
           </div>

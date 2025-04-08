@@ -111,11 +111,11 @@ const createTask = async (req, res) => {
         // Validate assignees - Check if each ID is a valid User ID
         if (assignees && assignees.length > 0) {
             console.log('CREATE TASK: Validating assignees:', assignees);
-            const validAssignees = await User.find({ id: { $in: assignees } }, { id: 1 });
-            const validAssigneeIds = validAssignees.map(user => user._id.toString());
+            const validAssignees = await User.find({ email: { $in: assignees } });
+            const validAssigneeEmails = validAssignees.map(user => user.email);
 
             // Check if any assignee ID is invalid
-            const invalidAssignees = assignees.filter(assignee => !validAssigneeIds.includes(assignee));
+            const invalidAssignees = assignees.filter(assignee => !validAssigneeEmails.includes(assignee));
             if (invalidAssignees.length > 0) {
                 console.log('CREATE TASK: Invalid assignees:', invalidAssignees);
                 return res.status(400).json({

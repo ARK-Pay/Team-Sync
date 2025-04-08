@@ -8,8 +8,7 @@ import {
   faFileAlt, 
   faUsers, 
   faLifeRing,
-  faEnvelope 
-} from '@fortawesome/free-solid-svg-icons';
+  faEnvelope } from '@fortawesome/free-solid-svg-icons';
 import { userNameState, userEmailState } from '../../../../store/atoms/authAtoms';
 import { useRecoilValue, useSetRecoilState } from 'recoil';
 import { sidebarSelection } from '../../../../store/atoms/adminDashboardAtoms';
@@ -20,7 +19,6 @@ import { useNavigate } from 'react-router-dom';
 
 // Reusable component for rendering sidebar menu items with icons
 const IconItem = ({ icon, label, active = false }) => {
-  
   return (
     <a
       href="#"
@@ -122,12 +120,12 @@ const Sidebar = ({ isOpen, onClose }) => {
                 setactive("mail");
                 setSidebarSelection("mail");
               }}><IconItem icon={faEnvelope} label="Mail" active={active==="mail"} /></li>
+
             </ul>
           </nav>
 
-          {/* Profile Section */}
-          <div className="p-4 mt-auto">
-            <div className="flex-1 h-0.5 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 mb-4"></div>
+          {/* User Profile */}
+          <div className="p-4 border-t border-gray-200">
             <div className="flex items-center gap-3">
               <img
                 className="w-10 h-10 rounded-full"

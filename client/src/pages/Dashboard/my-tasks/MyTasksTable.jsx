@@ -85,21 +85,99 @@ const EditModal = ({ isOpen, onClose, task, onSave }) => {
   const [editedTask, setEditedTask] = useState({ ...task });
   const [errors, setErrors] = useState({});
   const [isFormChanged, setIsFormChanged] = useState(false);
-// Update the modal form when the task data changes
+  const [projects, setProjects] = useState([]);
+  const [isNewTask, setIsNewTask] = useState(false);
+
+  // Update the modal form when the task data changes
   useEffect(() => {
-      if (task) {
-          setEditedTask({ ...task });
+    if (task) {
+      setEditedTask({ ...task });
+      setIsNewTask(!task._id && !task.id);
+      
+      // If it's a new task, fetch projects
+      if (!task._id && !task.id) {
+        fetchUserProjects();
       }
+    }
   }, [task]);
-// Handle form field changes
-  const handleChange = (e) => {
-      const { name, value } = e.target;
-      setEditedTask((prevTask) => {
-          const updatedTask = { ...prevTask, [name]: value };
-          validateForm(updatedTask);// Validate the updated form
-          setIsFormChanged(JSON.stringify(updatedTask) !== JSON.stringify(task)); // Check if the form has changes
-          return updatedTask;
+
+  // Fetch projects the user is part of
+  const fetchUserProjects = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setErrors({ ...errors, form: 'Authentication information missing' });
+        return;
+      }
+      
+      // Create axios instance with auth headers
+      const api = axios.create({
+        baseURL: 'http://localhost:3001',
+        headers: { authorization: token }
       });
+      
+      // Fetch both created and assigned projects
+      const createdProjectsResponse = await api.get('/project/my-created-projects');
+      const assignedProjectsResponse = await api.get('/project/get-my-assigned-projects');
+      
+      // Combine both project lists and remove duplicates
+      let allProjects = [];
+      
+      if (createdProjectsResponse.data && Array.isArray(createdProjectsResponse.data)) {
+        allProjects = [...createdProjectsResponse.data];
+      }
+      
+      if (assignedProjectsResponse.data && Array.isArray(assignedProjectsResponse.data)) {
+        // Add assigned projects that aren't already in the list (avoiding duplicates)
+        assignedProjectsResponse.data.forEach(project => {
+          if (!allProjects.some(p => p.id === project.id)) {
+            allProjects.push(project);
+          }
+        });
+      }
+      
+      if (allProjects.length > 0) {
+        setProjects(allProjects);
+        
+        // Select the first project by default
+        if (!editedTask.project_id) {
+          setEditedTask(prev => ({ ...prev, project_id: allProjects[0].id, project_name: allProjects[0].name }));
+        }
+      } else {
+        setErrors({ ...errors, project: 'No projects found. Please create or join a project first.' });
+      }
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+      setErrors({ ...errors, project: 'Failed to load projects' });
+    }
+  };
+
+  // Handle form field changes
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    
+    if (name === 'project_id' && value) {
+      // When project is selected, also update project_name
+      const selectedProject = projects.find(p => p.id === value);
+      setEditedTask((prevTask) => {
+        const updatedTask = { 
+          ...prevTask, 
+          [name]: value,
+          project_name: selectedProject ? selectedProject.name : ''
+        };
+        validateForm(updatedTask);
+        setIsFormChanged(JSON.stringify(updatedTask) !== JSON.stringify(task));
+        return updatedTask;
+      });
+    } else {
+      setEditedTask((prevTask) => {
+        const updatedTask = { ...prevTask, [name]: value };
+        validateForm(updatedTask);
+        setIsFormChanged(JSON.stringify(updatedTask) !== JSON.stringify(task));
+        return updatedTask;
+      });
+    }
   };
 // Validate the form using Zod schema
   const validateForm = (formData) => {
@@ -118,11 +196,11 @@ const EditModal = ({ isOpen, onClose, task, onSave }) => {
   };
 // Save the edited task if validation passes
   const handleSave = () => {
-      if (Object.keys(errors).length === 0 && isFormChanged) {
-          onSave(editedTask);
-      } else {
-          setErrors({ ...errors, form: 'Please correct errors or make a change before saving' });
-      }
+    if (Object.keys(errors).length === 0 && (isFormChanged || isNewTask)) {
+      onSave(editedTask);
+    } else {
+      setErrors({ ...errors, form: 'Please correct errors or make a change before saving' });
+    }
   };
 
   if (!isOpen) return null;
@@ -144,7 +222,7 @@ const EditModal = ({ isOpen, onClose, task, onSave }) => {
                   <X className="h-5 w-5" />
               </button>
 
-              <h2 className="text-xl font-semibold mb-4">Edit Task</h2>
+              <h2 className="text-xl font-semibold mb-4">{isNewTask ? 'Create Task' : 'Edit Task'}</h2>
 
               <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700">Title</label>
@@ -157,6 +235,26 @@ const EditModal = ({ isOpen, onClose, task, onSave }) => {
                   />
                   {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
               </div>
+
+              {isNewTask && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700">Project</label>
+                  <select
+                    name="project_id"
+                    value={editedTask.project_id || ''}
+                    onChange={handleChange}
+                    className="mt-1 px-3 py-2 border rounded-md w-full"
+                  >
+                    <option value="">Select Project</option>
+                    {projects.map(project => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.project_id && <p className="text-red-500 text-xs mt-1">{errors.project_id}</p>}
+                </div>
+              )}
 
               <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700">Description</label>
@@ -226,7 +324,7 @@ const EditModal = ({ isOpen, onClose, task, onSave }) => {
                       onClick={handleSave}
                       className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
                   >
-                      Save
+                      {isNewTask ? 'Create' : 'Save'}
                   </button>
               </div>
           </div>
@@ -274,34 +372,16 @@ const MyTasksTable = ({ type = 'assigned' }) => {
     task: null // Holds the task object being edited, or null if no task is selected
   });
   
-  // Create axios instance with default config
-  const api = axios.create({
-    baseURL: 'http://localhost:3001',
-    headers: {
-      'Authorization': localStorage.getItem('token')
-    }
-  });
-// Effect hook to fetch tasks whenever the 'type' prop changes
-  useEffect(() => {
-    fetchTasks();
-  }, [type]);
 // Function to handle when the Delete button is clicked for a task
-  const handleDeleteClick = (taskId, taskTitle, taskProjectId) => {
-    if (!taskId) {
-      // Ensure that a valid task ID is provided
-      console.error('No task ID provided');
-      showToast("Error: Unable to delete task", "error");
-      return;
-    }
-    
-    setDeleteModal({ 
-      // Update the state to open the delete modal with the selected task details
+  const handleDeleteClick = useCallback((task) => {
+    setDeleteModal({
       isOpen: true,
-      taskId,
-      taskTitle,
-      project_id:taskProjectId
+      taskId: task.id,
+      taskTitle: task.title,
+      project_id: task.project_id
     });
-  };
+  }, []);
+
 // Function to confirm task deletion
 
   const handleDeleteConfirm = useCallback(async () => {
@@ -309,7 +389,7 @@ const MyTasksTable = ({ type = 'assigned' }) => {
     try {
       const projectId = deleteModal.project_id;
       // Send a DELETE request to the API to remove the task
-      await api.delete(`/task/project/${projectId}/delete-task`, {
+      await api.delete(`task/project/${projectId}/delete-task`, {
         data: { task_id: taskId }
       });
       // Update the tasks state to remove the deleted task
@@ -324,98 +404,21 @@ const MyTasksTable = ({ type = 'assigned' }) => {
     } finally {
       setDeleteModal({ isOpen: false, taskId: null, taskTitle: '' });
     }
-  }, [deleteModal.taskId]);
-// Function to fetch tasks from the server
-  const fetchAssignedTasks = async () => {
-    try {
-      const userId = localStorage.getItem('userId');
-      const token = localStorage.getItem('token');
-      const userEmail = localStorage.getItem('userEmail');
-      
-      console.log('Fetching assigned tasks for user:', { userId, userEmail });
-      
-      // Try multiple endpoints to ensure we get the assigned tasks
-      let response = null;
-      let error = null;
-      
-      // First try with userId
-      if (userId) {
-        try {
-          console.log(`Trying endpoint: http://localhost:3001/task/user/${userId}/assigned-tasks`);
-          const resp = await axios.get(
-            `http://localhost:3001/task/user/${userId}/assigned-tasks`,
-            { headers: { 'authorization': token } }
-          );
-          
-          if (resp.data && resp.data.length > 0) {
-            console.log(`Found ${resp.data.length} assigned tasks using userId`);
-            response = resp;
-          } else {
-            console.log('No tasks found using userId endpoint');
-          }
-        } catch (err) {
-          console.error('Error with userId endpoint:', err);
-          error = err;
-        }
-      }
-      
-      // If userId approach failed, try with email
-      if (!response && userEmail) {
-        try {
-          console.log(`Trying endpoint: http://localhost:3001/task/user/${userEmail}/assigned-tasks`);
-          const resp = await axios.get(
-            `http://localhost:3001/task/user/${userEmail}/assigned-tasks`,
-            { headers: { 'authorization': token } }
-          );
-          
-          if (resp.data && resp.data.length > 0) {
-            console.log(`Found ${resp.data.length} assigned tasks using userEmail`);
-            response = resp;
-          } else {
-            console.log('No tasks found using userEmail endpoint');
-          }
-        } catch (err) {
-          console.error('Error with userEmail endpoint:', err);
-          if (!error) error = err;
-        }
-      }
-      
-      // If both approaches failed, try a generic endpoint
-      if (!response) {
-        try {
-          console.log('Trying generic assigned tasks endpoint');
-          const resp = await axios.get(
-            `http://localhost:3001/task/assigned-tasks`,
-            { headers: { 'authorization': token } }
-          );
-          
-          if (resp.data && resp.data.length > 0) {
-            console.log(`Found ${resp.data.length} assigned tasks using generic endpoint`);
-            response = resp;
-          } else {
-            console.log('No tasks found using generic endpoint');
-          }
-        } catch (err) {
-          console.error('Error with generic endpoint:', err);
-          if (!error) error = err;
-        }
-      }
-      
-      // If we have a response, process it
-      if (response) {
-        return response.data;
-      } else {
-        // If all approaches failed, throw the error
-        if (error) throw error;
-        return [];
-      }
-    } catch (error) {
-      console.error('Failed to fetch assigned tasks:', error);
-      showToast("Failed to fetch assigned tasks. Please try again later.", "error");
-      return [];
+  }, [deleteModal.taskId, deleteModal.project_id]);
+// Create axios instance with default config
+  const api = axios.create({
+    baseURL: 'http://localhost:3001',
+    headers: {
+      'Authorization': localStorage.getItem('token')
     }
-  };
+  });
 
+  // Effect hook to fetch tasks whenever the 'type' prop changes
+  useEffect(() => {
+    fetchTasks();
+  }, [type]);
+
+  // Function to fetch tasks from the server
   const fetchTasks = async () => {
     try {
       setLoading(true);
@@ -431,13 +434,8 @@ const MyTasksTable = ({ type = 'assigned' }) => {
         taskData = await fetchAssignedTasks();
       } else {
         // For created tasks, use the existing approach
-        const response = await axios.get(
-          `http://localhost:3001/task/user/${userEmail}/created-tasks`,
-          {
-            headers: {
-              'authorization': token,
-            }
-          }
+        const response = await api.get(
+          `task/user/${userEmail}/created-tasks`,
         );
         taskData = response.data;
       }
@@ -474,6 +472,94 @@ const MyTasksTable = ({ type = 'assigned' }) => {
       setLoading(false);
     }
   };
+
+  const fetchAssignedTasks = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const token = localStorage.getItem('token');
+      const userEmail = localStorage.getItem('userEmail');
+      
+      console.log('Fetching assigned tasks for user:', { userId, userEmail });
+      
+      // Try multiple endpoints to ensure we get the assigned tasks
+      let response = null;
+      let error = null;
+      
+      // First try with userId
+      if (userId) {
+        try {
+          console.log(`Trying endpoint: http://localhost:3001/task/user/${userId}/assigned-tasks`);
+          const resp = await api.get(
+            `task/user/${userId}/assigned-tasks`,
+          );
+          
+          if (resp.data && resp.data.length > 0) {
+            console.log(`Found ${resp.data.length} assigned tasks using userId`);
+            response = resp;
+          } else {
+            console.log('No tasks found using userId endpoint');
+          }
+        } catch (err) {
+          console.error('Error with userId endpoint:', err);
+          error = err;
+        }
+      }
+      
+      // If userId approach failed, try with email
+      if (!response && userEmail) {
+        try {
+          console.log(`Trying endpoint: http://localhost:3001/task/user/${userEmail}/assigned-tasks`);
+          const resp = await api.get(
+            `task/user/${userEmail}/assigned-tasks`,
+          );
+          
+          if (resp.data && resp.data.length > 0) {
+            console.log(`Found ${resp.data.length} assigned tasks using userEmail`);
+            response = resp;
+          } else {
+            console.log('No tasks found using userEmail endpoint');
+          }
+        } catch (err) {
+          console.error('Error with userEmail endpoint:', err);
+          if (!error) error = err;
+        }
+      }
+      
+      // If both approaches failed, try a generic endpoint
+      if (!response) {
+        try {
+          console.log('Trying generic assigned tasks endpoint');
+          const resp = await api.get(
+            `task/assigned-tasks`,
+          );
+          
+          if (resp.data && resp.data.length > 0) {
+            console.log(`Found ${resp.data.length} assigned tasks using generic endpoint`);
+            response = resp;
+          } else {
+            console.log('No tasks found using generic endpoint');
+          }
+        } catch (err) {
+          console.error('Error with generic endpoint:', err);
+          if (!error) error = err;
+        }
+      }
+      
+      // If we have a response, process it
+      if (response) {
+        return response.data;
+      } else {
+        // If all approaches failed, throw the error
+        if (error) throw error;
+        return [];
+      }
+    } catch (error) {
+      console.error('Failed to fetch assigned tasks:', error);
+      showToast("Failed to fetch assigned tasks. Please try again later.", "error");
+      return [];
+    }
+  };
+
   const handleEditClick = (task) => {
     setEditModal({
       isOpen: true,
@@ -484,20 +570,80 @@ const MyTasksTable = ({ type = 'assigned' }) => {
 // Function to handle saving the edited task details
   const handleEditSave = async (editedTask) => {
     try {
-      // Send a PUT request to update the task with the provided edited details
-      await api.put(`/task/${editedTask._id}/edit-details`, editedTask);
-      const updatedTasks = tasks.map((task) =>
-        task._id === editedTask._id ? editedTask : task
-      ); 
-      // Update both the tasks and filteredTasks state to reflect the changes
-      setTasks(updatedTasks);
-      setFilteredTasks(updatedTasks);
-      showToast("Task updated successfully", "success");
+      const token = localStorage.getItem('token');
+      if (!token) {
+        showToast("Authentication information missing", "error");
+        return;
+      }
+
+      // Create axios instance with auth headers
+      const api = axios.create({
+        baseURL: 'http://localhost:3001',
+        headers: { authorization: token }
+      });
+
+      // Check if this is a new task or an edit
+      const isNewTask = !editedTask._id && !editedTask.id;
+
+      if (isNewTask) {
+        // For new task, we need to add creator_id
+        const creatorId = localStorage.getItem('userEmail');
+        if (!creatorId) {
+          showToast("User email not found", "error");
+          return;
+        }
+
+        if (!editedTask.project_id) {
+          showToast("Please select a project", "error");
+          return;
+        }
+
+        // Prepare task data for creation
+        const taskData = {
+          ...editedTask,
+          creator_id: creatorId,
+          status: editedTask.status || '0', // Default to 'To Do'
+          priority: editedTask.priority || '1', // Default to 'Medium'
+        };
+
+        // Send a POST request to create the task
+        const response = await api.post(`task/project/${taskData.project_id}/create-task`, taskData);
+        
+        // Add the new task to the tasks list
+        const newTask = response.data.task;
+        setTasks(prevTasks => [...prevTasks, newTask]);
+        setFilteredTasks(prevFilteredTasks => [...prevFilteredTasks, newTask]);
+        
+        showToast("Task created successfully", "success");
+      } else {
+        // For existing task, update it
+        if (!editedTask._id && !editedTask.id) {
+          showToast("Task ID is missing", "error");
+          return;
+        }
+
+        const taskId = editedTask._id || editedTask.id;
+        
+        // Send a PUT request to update the task
+        await api.put(`task/${taskId}/edit-details`, editedTask);
+        
+        // Update both the tasks and filteredTasks state to reflect the changes
+        const updatedTasks = tasks.map((task) =>
+          task._id === taskId || task.id === taskId ? editedTask : task
+        );
+        
+        setTasks(updatedTasks);
+        setFilteredTasks(updatedTasks);
+        
+        showToast("Task updated successfully", "success");
+      }
     } catch (error) {
-      console.error('Edit task error:', error);
-      showToast("Failed to update task", "error");
+      console.error('Edit/Create task error:', error);
+      showToast(error.response?.data?.message || "Failed to save task", "error");
     } finally {
       setEditModal({ isOpen: false, task: null });
+      // Refresh the tasks list
+      fetchTasks();
     }
   };
 // Function to handle task search functionality
@@ -942,7 +1088,7 @@ const MyTasksTable = ({ type = 'assigned' }) => {
                             </td>
                             <td className="py-4 px-2">
                               <button
-                                onClick={() => handleDeleteClick(task._id, task.title, task.project_id)}
+                                onClick={() => handleDeleteClick(task)}
                                 className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
                                 title="Delete Task"
                               >
