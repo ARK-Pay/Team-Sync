@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import "./index.css"; // Import Tailwind directives first
 import "./App.css"; // Import custom styles second
 import Home from "./pages/Home/Home";
+import EditorPage from "./pages/Editor/EditorPage";
 import { ThemeProvider } from "styled-components";
 import Navbar from "./pages/Home/components/Navbar";
 import { darkTheme, lightTheme } from "./utils/Theme";
@@ -95,6 +96,14 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <VideoConference />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/editor" 
+              element={
+                <ProtectedRoute>
+                  <EditorPage />
                 </ProtectedRoute>
               } 
             />

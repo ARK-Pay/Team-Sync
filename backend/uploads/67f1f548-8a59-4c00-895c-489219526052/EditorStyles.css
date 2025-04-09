@@ -1,0 +1,104 @@
+/* Editor Page Styles */
+
+/* File Explorer Styles */
+.file-explorer {
+  min-width: 250px;
+  max-width: 350px;
+  background-color: var(--bg-color, #1e1e1e);
+  color: var(--text-color, #d4d4d4);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.file-explorer-header {
+  background-color: var(--header-bg, #252526);
+  border-bottom: 1px solid var(--border-color, #3e3e42);
+}
+
+.file-explorer-content {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Tree View Styles */
+.file-tree {
+  padding: 4px;
+}
+
+.file-explorer-item {
+  font-size: 13px;
+  user-select: none;
+}
+
+.folder-contents {
+  position: relative;
+  padding-left: 4px;
+  margin-left: 8px;
+}
+
+.folder-contents::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 1px;
+  background-color: var(--border-color, #3e3e42);
+  opacity: 0.5;
+}
+
+/* File and Folder Icons */
+.file-explorer-item .lucide-folder {
+  color: #dcb67a;
+}
+
+.file-explorer-item .lucide-file {
+  color: #75beff;
+}
+
+/* Selected Item Highlight */
+.file-explorer-item .selected {
+  background-color: var(--selected-bg, #094771);
+}
+
+/* Hover Effects */
+.file-explorer-item > div:hover {
+  background-color: var(--hover-bg, #2a2d2e);
+}
+
+/* Dark Mode Adjustments */
+.dark .file-explorer {
+  --bg-color: #1e1e1e;
+  --text-color: #d4d4d4;
+  --header-bg: #252526;
+  --border-color: #3e3e42;
+  --selected-bg: #094771;
+  --hover-bg: #2a2d2e;
+}
+
+/* Light Mode Adjustments */
+.light .file-explorer {
+  --bg-color: #f5f5f5;
+  --text-color: #333333;
+  --header-bg: #e4e4e4;
+  --border-color: #cccccc;
+  --selected-bg: #cce5ff;
+  --hover-bg: #e8e8e8;
+}
+
+/* Animation for folder expansion */
+.folder-contents {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .file-explorer {
+    min-width: 200px;
+  }
+}

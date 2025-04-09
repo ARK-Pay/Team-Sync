@@ -1,0 +1,42 @@
+{
+	"root": true,
+
+	"extends": "@ljharb",
+
+	"globals": {
+		"DataView": false,
+	},
+}
+, "max": 26 }],
+		"new-cap": [2, {
+			"capIsNewExceptions": [
+				"GetIntrinsic",
+				"ToObject",
+				"ToIntegerOrInfinity",
+				"ToLength",
+				"SameValueZero",
+				"RequireObjectCoercible",
+			],
+		}],
+	},
+
+	"overrides": [
+		{
+			"files": "test/**",
+			"rules": {
+				"max-lines-per-function": 0,
+				"no-invalid-this": 1,
+			},
+		},
+	],
+}
+	"files": "test/**",
+			"rules": {
+				"func-name-matching": 0,
+				"max-lines-per-function": 0,
+				"no-invalid-this": 1,
+				"strict": 1,
+			},
+		},
+	],
+}

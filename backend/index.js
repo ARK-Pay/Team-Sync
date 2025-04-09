@@ -13,6 +13,7 @@ const commentRouter = require("./routes/comment");
 const summarizerRouter = require("./routes/summarizer");
 const translatorRouter = require("./routes/translator");
 const mailRouter = require("./routes/mail/mailRoutes");
+const filesystemRouter = require("./routes/filesystem");
 
 const app = express();
 const PORT = 3001; 
@@ -163,6 +164,16 @@ app.use("/comment", commentRouter);
 app.use("/api", summarizerRouter);
 app.use("/api", translatorRouter);
 app.use("/mail", mailRouter);
+app.use("/filesystem", filesystemRouter);
+
+// Create uploads directory if it doesn't exist
+const fs = require('fs');
+const path = require('path');
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log('Created uploads directory');
+}
 
 // Start server only after connecting to MongoDB
 const startBackend = async () => {
@@ -172,6 +183,7 @@ const startBackend = async () => {
         server.listen(PORT, () => {
             console.log(`Server is running on port ${PORT}`);
             console.log(`Socket.io server is running`);
+            console.log(`Filesystem API available at /filesystem`);
         });
     } catch (error) {
         console.error('Failed to start backend:', error);

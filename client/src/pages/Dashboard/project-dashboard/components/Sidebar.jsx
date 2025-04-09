@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Video, FileText, Code } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faFolder, faTasks, faUsers, faBell, faTachometerAlt, faEnvelope, faCalendar } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
@@ -181,6 +181,45 @@ const Sidebar = ({ isOpen, onClose }) => {
                     className={`w-5 h-5 mr-3 ${active === "calendar" ? 'text-blue-600' : 'text-gray-500'}`} 
                   />
                   <span className="font-medium">Calendar</span>
+                </a>
+              </li>
+              
+              <li>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2.5 text-gray-700 rounded-md ${active === "video-call" ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                  onClick={() => { navigate("/video-call"); setActive("video-call"); }}
+                >
+                  <Video 
+                    className={`w-5 h-5 mr-3 ${active === "video-call" ? 'text-blue-600' : 'text-gray-500'}`} 
+                  />
+                  <span className="font-medium">Video Call</span>
+                </a>
+              </li>
+              
+              <li>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2.5 text-gray-700 rounded-md ${active === "document-summarizer" ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                  onClick={() => { navigate("/document-summarizer"); setActive("document-summarizer"); }}
+                >
+                  <FileText 
+                    className={`w-5 h-5 mr-3 ${active === "document-summarizer" ? 'text-blue-600' : 'text-gray-500'}`} 
+                  />
+                  <span className="font-medium">Summarize Docs</span>
+                </a>
+              </li>
+              
+              <li>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2.5 text-gray-700 rounded-md ${active === "editor" ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                  onClick={() => { navigate("/editor"); setActive("editor"); }}
+                >
+                  <Code 
+                    className={`w-5 h-5 mr-3 ${active === "editor" ? 'text-blue-600' : 'text-gray-500'}`} 
+                  />
+                  <span className="font-medium">Code Editor</span>
                 </a>
               </li>
             </ul>
