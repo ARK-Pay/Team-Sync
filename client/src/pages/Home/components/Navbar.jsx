@@ -18,6 +18,48 @@ const Navbar = ({ setSignInOpen }) => {
     localStorage.getItem('userProfileImage') || "https://flowbite.com/docs/images/people/profile-picture-5.jpg"
   );
 
+  // Update profile image when localStorage changes or login status changes
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const storedImage = localStorage.getItem('userProfileImage');
+      console.log('Navbar: Retrieved profile image from localStorage:', storedImage);
+      if (storedImage) {
+        setProfileImage(storedImage);
+      } else {
+        setProfileImage("https://flowbite.com/docs/images/people/profile-picture-5.jpg");
+      }
+    };
+
+    // Listen for storage events
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Always check when this component mounts or login status changes
+    handleStorageChange();
+    
+    // If logged in, fetch profile image from server as a backup
+    if (isLoggedIn) {
+      const token = localStorage.getItem('token');
+      if (token) {
+        fetch('http://localhost:3001/user/profile', {
+          headers: { authorization: token }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success && data.user && data.user.profile_image) {
+            console.log('Navbar: Retrieved profile image from server:', data.user.profile_image);
+            localStorage.setItem('userProfileImage', data.user.profile_image);
+            setProfileImage(data.user.profile_image);
+          }
+        })
+        .catch(err => console.error('Error fetching profile image:', err));
+      }
+    }
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [isLoggedIn]);
+
   // Scroll event to fade the navbar
   useEffect(() => {
     let lastScrollY = window.scrollY;

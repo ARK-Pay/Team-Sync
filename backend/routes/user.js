@@ -86,6 +86,7 @@ router.post("/signin", validateUserSignin,(req,res)=>{
         expiresIn: "12h",
     });
     
+    // Make sure to include the profile image in the response
     return res.json({
         success: true,
         message: "User signed in successfully.",
@@ -93,7 +94,8 @@ router.post("/signin", validateUserSignin,(req,res)=>{
         name: user.name,
         email: user.email,
         teamsync_email: user.teamsync_email,
-        joined_at: user.created_at
+        joined_at: user.created_at,
+        profile_image: user.profile_image || "https://flowbite.com/docs/images/people/profile-picture-5.jpg"
     });
 })
 
@@ -350,6 +352,7 @@ router.get("/profile", tokenValidation, async (req,res)=>{
                 name: RequestedUser.name,
                 email: RequestedUser.email,
                 teamsync_email: RequestedUser.teamsync_email,
+                profile_image: RequestedUser.profile_image,
                 // state: RequestedUser.state,
                 // created_at: RequestedUser.created_at,
                 // last_login: RequestedUser.last_login
@@ -363,6 +366,46 @@ router.get("/profile", tokenValidation, async (req,res)=>{
         });
     }
 })
+
+// Update user profile image
+router.put("/update-profile-image", tokenValidation, async (req, res) => {
+    try {
+        // Get the profile image URL from request body - handle different possible formats
+        let profileImage;
+        if (req.body.profileImage) {
+            profileImage = req.body.profileImage;
+        } else if (typeof req.body === 'string') {
+            profileImage = req.body;
+        } else {
+            console.log('Received body:', req.body);
+            return res.status(400).json({
+                success: false,
+                errors: ["Profile image is required in a valid format."]
+            });
+        }
+        
+        // Get user from request
+        const user = req.user;
+        
+        // Update user's profile image
+        user.profile_image = profileImage;
+        
+        // Save updated user
+        await user.save();
+        
+        // Send success response
+        return res.status(200).json({
+            success: true,
+            message: "Profile image updated successfully."
+        });
+    } catch (error) {
+        console.error("Error updating profile image:", error);
+        return res.status(500).json({
+            success: false,
+            errors: ["Internal server error."]
+        });
+    }
+});
 
 router.delete("/:user_id",tokenValidationAdmin,async (req,res)=>{
     try {

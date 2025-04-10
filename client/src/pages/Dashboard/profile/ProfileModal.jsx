@@ -30,6 +30,30 @@ const ProfileModal = ({ isOpen, onClose, onResetPassword }) => {
     joinDate: localStorage.getItem("userJoindate"),
     profileImage: localStorage.getItem("userProfileImage") || "https://flowbite.com/docs/images/people/profile-picture-5.jpg"
   };
+  
+  // Fetch user profile from server on component mount
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        
+        const response = await axios.get('http://localhost:3001/user/profile', {
+          headers: { authorization: token }
+        });
+        
+        if (response.data.success && response.data.user.profile_image) {
+          // Update profile image from server data
+          setProfileImage(response.data.user.profile_image);
+          localStorage.setItem('userProfileImage', response.data.user.profile_image);
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      }
+    };
+    
+    fetchUserProfile();
+  }, []);
 
   // Format the join date to a more readable format
   const formattedJoinDate = new Date(user.joinDate).toLocaleDateString('en-US', {
@@ -135,19 +159,39 @@ const ProfileModal = ({ isOpen, onClose, onResetPassword }) => {
     setLoading(true);
     
     try {
-      // In a real app, you would upload the image to a server here
-      // For now, we'll just save it to localStorage
+      // First, save to localStorage for immediate display
       localStorage.setItem('userProfileImage', profileImage);
       
+      // Then try to save the profile image to the server
+      try {
+        console.log('Sending profile image to server:', profileImage);
+        const imageResponse = await axios({
+          method: 'put',
+          url: 'http://localhost:3001/user/update-profile-image',
+          data: { profileImage },
+          headers: { 
+            'Content-Type': 'application/json',
+            'authorization': localStorage.getItem('token') 
+          }
+        });
+        
+        if (imageResponse.status === 200) {
+          console.log('Profile image saved to server successfully');
+        }
+      } catch (imageError) {
+        console.error('Error saving profile image to server:', imageError.response?.data || imageError);
+        // We already saved to localStorage above, so the UI will still update
+      }
+      
       // Send a PUT request to update the user's name
-      const response = await axios.put(
+      const nameResponse = await axios.put(
         'http://localhost:3001/user/edit-name',
         { name: newName },
         { headers: { authorization: localStorage.getItem('token') } }
       );
 
-      // Check if the response status is successful
-      if (response.status === 200) {
+      // If name update is successful
+      if (nameResponse.status === 200) {
         localStorage.setItem('userName', newName);
         toast.success('Profile updated successfully!');
         setIsEditing(false);
@@ -157,6 +201,7 @@ const ProfileModal = ({ isOpen, onClose, onResetPassword }) => {
       if (error.response?.status === 400) {
         toast.error('Invalid input. Please try again.');
       } else {
+        console.error('Error updating profile:', error);
         toast.error('An error occurred. Please try again later.');
       }
     } finally {

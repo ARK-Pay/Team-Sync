@@ -65,7 +65,11 @@ const UserSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
-    last_login: Date
+    last_login: Date,
+    profile_image: {
+        type: String,
+        default: "https://flowbite.com/docs/images/people/profile-picture-5.jpg"
+    }
 }); // Disables MongoDB's default _id field
 
 // Cascade delete related entries in ProjectUser when a User is deleted

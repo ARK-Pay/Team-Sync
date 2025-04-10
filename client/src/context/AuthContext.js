@@ -45,6 +45,7 @@ export function AuthProvider({ children }) {
             name: localStorage.getItem('userName'),
             isAdmin: decoded.admin_id ? true : false,
             userId: decoded.admin_id || decoded.user_id,
+            profileImage: localStorage.getItem('userProfileImage')
           };
 
           setUser(userData);
@@ -69,6 +70,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('isAdmin');
     localStorage.removeItem('userId');
     localStorage.removeItem('userJoindate');
+    localStorage.removeItem('userProfileImage'); // Also remove profile image
     
     setUser(null);
     dispatch(logout());
@@ -77,8 +79,27 @@ export function AuthProvider({ children }) {
 
   // Login handler
   const handleLogin = (userData, token) => {
+    console.log('Login data received:', userData); // Log the data for debugging
     localStorage.setItem('token', token);
-    setUser(userData);
+    
+    // Save user data to localStorage
+    if (userData.name) localStorage.setItem('userName', userData.name);
+    if (userData.email) localStorage.setItem('userEmail', userData.email);
+    if (userData.joined_at) localStorage.setItem('userJoindate', userData.joined_at);
+    
+    // Ensure profile image is always saved
+    if (userData.profile_image) {
+      console.log('Saving profile image:', userData.profile_image);
+      localStorage.setItem('userProfileImage', userData.profile_image);
+    }
+    
+    // Create a user object with all the data
+    const userObj = {
+      ...userData,
+      profileImage: userData.profile_image // Make sure profileImage is included
+    };
+    
+    setUser(userObj);
   };
 
   // Return the context provider with values
