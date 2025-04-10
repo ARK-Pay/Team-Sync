@@ -1,6 +1,14 @@
 import { createGlobalStyle } from 'styled-components';
 
 export const GlobalStyles = createGlobalStyle`
+  @font-face {
+    font-family: 'Akira';
+    src: url('/fonts/Akira Expanded Demo.otf') format('opentype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
+
   * {
     margin: 0;
     padding: 0;
@@ -21,9 +29,9 @@ export const GlobalStyles = createGlobalStyle`
   }
 
   html, body {
-    font-family: 'Inter', 'Segoe UI', Roboto, -apple-system, BlinkMacSystemFont, sans-serif;
-    background-color: var(--dark);
-    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    background-color: #060918;
+    color: #ffffff;
     font-size: 16px;
     line-height: 1.5;
     overflow-x: hidden;
@@ -84,10 +92,10 @@ export const GlobalStyles = createGlobalStyle`
   }
 
   .container {
-    width: 90%;
-    max-width: var(--max-width);
+    width: 100%;
+    max-width: 1200px;
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 1.5rem;
   }
 
   /* Animation utility classes */
@@ -114,16 +122,13 @@ export const GlobalStyles = createGlobalStyle`
 
   /* Hide default scrollbar */
   ::-webkit-scrollbar {
-    width: 6px;
+    display: none;
   }
 
-  ::-webkit-scrollbar-track {
-    background: var(--dark);
-  }
-
-  ::-webkit-scrollbar-thumb {
-    background: var(--primary);
-    border-radius: 6px;
+  /* Hide scrollbar for IE, Edge and Firefox */
+  html {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
   }
 
   ::selection {
