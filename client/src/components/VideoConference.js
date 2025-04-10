@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { io } from "socket.io-client";
 import "./VideoConference.css";
+import { Edit3, Maximize2, Minimize2 } from 'lucide-react';
+import Whiteboard from './Whiteboard';
+import './Whiteboard.css';
 import axios from "axios";
 import { 
   Mic, 
@@ -111,6 +114,8 @@ const VideoConference = ({ roomId }) => {
   const meetingTimerRef = useRef(null);
   const remoteVideoRefs = useRef({});
   const combinedStreamRef = useRef(null);
+  const [showWhiteboard, setShowWhiteboard] = useState(false);
+  const [isWhiteboardFullscreen, setIsWhiteboardFullscreen] = useState(false);
   
   // Retrieve project name from localStorage
   useEffect(() => {
@@ -1364,6 +1369,26 @@ ${actions.map(a => `- ${a}`).join('\n')}`;
       });
   };
 
+  const toggleWhiteboard = () => {
+    // When opening the whiteboard, automatically set it to fullscreen
+    if (!showWhiteboard) {
+      setShowWhiteboard(true);
+      setIsWhiteboardFullscreen(true);
+    } else {
+      // When closing, make sure to reset both states
+      setShowWhiteboard(false);
+      setIsWhiteboardFullscreen(false);
+    }
+    
+    // Close other panels when whiteboard is opened
+    if (showChat) setShowChat(false);
+    if (showParticipants) setShowParticipants(false);
+  };
+  
+  const toggleWhiteboardFullscreen = () => {
+    setIsWhiteboardFullscreen(!isWhiteboardFullscreen);
+  };
+
   return (
     <div className="video-conference">
       {/* Video background with gradient overlay */}
@@ -1435,7 +1460,7 @@ ${actions.map(a => `- ${a}`).join('\n')}`;
       )}
 
       {/* Main Video Grid */}
-      <div className={`video-grid ${screenSharing ? 'screen-active' : ''} layout-${layoutMode}`}>
+      <div className={`video-grid ${screenSharing ? 'screen-active' : ''} ${showWhiteboard ? 'whiteboard-active' : ''} layout-${layoutMode}`}>
         {screenSharing ? (
           // Screen sharing layout
           <div className="screen-sharing-layout">
@@ -1554,6 +1579,28 @@ ${actions.map(a => `- ${a}`).join('\n')}`;
             </div>
           </>
         )}
+        
+        {/* Add Whiteboard component */}
+        {showWhiteboard && (
+          <div className={`whiteboard-container ${isWhiteboardFullscreen ? 'fullscreen' : ''}`}>
+            <div className="whiteboard-header">
+              <h3>Whiteboard</h3>
+              <button
+                className="whiteboard-fullscreen-btn"
+                onClick={toggleWhiteboardFullscreen}
+                title={isWhiteboardFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              >
+                {isWhiteboardFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+              </button>
+            </div>
+            <div style={{ width: '100%', height: 'calc(100% - 50px)' }}>
+              <Whiteboard 
+                roomId={roomId}
+                userId={socket.id}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Floating Action Menu */}
@@ -1578,6 +1625,13 @@ ${actions.map(a => `- ${a}`).join('\n')}`;
           title="AI Meeting Summary"
         >
           <FileText size={20} />
+        </button>
+        <button 
+          className={`floating-action-btn ${showWhiteboard ? 'active' : ''}`}
+          onClick={toggleWhiteboard}
+          title="Whiteboard"
+        >
+          <Edit3 size={20} />
         </button>
       </div>
 
@@ -1801,6 +1855,28 @@ ${actions.map(a => `- ${a}`).join('\n')}`;
           {interimTranscript && (
             <span className="interim-transcript">{interimTranscript}</span>
           )}
+        </div>
+      )}
+
+      {/* Whiteboard in fullscreen mode */}
+      {showWhiteboard && isWhiteboardFullscreen && (
+        <div className="whiteboard-fullscreen">
+          <div className="whiteboard-fullscreen-header">
+            <h3>Team Whiteboard</h3>
+            <button 
+              className="close-fullscreen-btn"
+              onClick={toggleWhiteboardFullscreen}
+              title="Return to video call"
+            >
+              <Minimize2 size={20} /> <span style={{ marginLeft: '5px' }}>Return to video call</span>
+            </button>
+          </div>
+          <div className="whiteboard-fullscreen-container">
+            <Whiteboard
+              roomId={`whiteboard-${meetingCode}`}
+              userId={socket.id}
+            />
+          </div>
         </div>
       )}
     </div>
