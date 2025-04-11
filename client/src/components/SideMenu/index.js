@@ -237,6 +237,9 @@ const SideMenu = () => {
             <Link to="#services">Services</Link>
           </NavItem>
           <NavItem>
+            <Link to="/figma">Figma Designs</Link>
+          </NavItem>
+          <NavItem>
             <Link to="#contact">Contact</Link>
           </NavItem>
           <NavItem>

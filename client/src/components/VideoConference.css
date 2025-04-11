@@ -1511,3 +1511,90 @@ video::-webkit-media-controls {
   height: 100%;
   width: 100%;
 }
+
+/* Breakout Rooms integration with VideoConference */
+.breakout-room-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  width: 400px;
+  max-width: 90vw;
+  max-height: 80vh;
+  z-index: 100;
+  overflow: hidden;
+  color: var(--text-dark);
+}
+
+.breakout-room-header {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.breakout-room-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.breakout-room-content {
+  padding: 20px;
+  overflow-y: auto;
+  max-height: calc(80vh - 60px);
+}
+
+/* Styles for the breakout room button */
+.floating-action-btn.active[title="Breakout Rooms"] {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+/* Ensure the breakout room style is consistent with the video conference theme */
+.create-room-btn, 
+.assign-btn, 
+.return-to-main-btn, 
+.join-room-btn {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.create-room-btn:hover, 
+.assign-btn:hover, 
+.return-to-main-btn:hover, 
+.join-room-btn:hover {
+  background-color: var(--primary-hover);
+}
+
+.close-room-btn {
+  background-color: var(--error-color);
+  color: white;
+}
+
+.close-room-btn:hover {
+  background-color: darkred;
+}
+
+/* Style adjustments for mobile */
+@media (max-width: 768px) {
+  .breakout-room-container {
+    width: 95vw;
+    max-height: 90vh;
+  }
+  
+  .breakout-room-content {
+    max-height: calc(90vh - 60px);
+  }
+}

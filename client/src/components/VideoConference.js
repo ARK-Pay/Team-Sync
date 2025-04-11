@@ -4,6 +4,7 @@ import "./VideoConference.css";
 import { Edit3, Maximize2, Minimize2 } from 'lucide-react';
 import Whiteboard from './Whiteboard';
 import './Whiteboard.css';
+import BreakoutRoom from './BreakoutRoom';
 import axios from "axios";
 import { 
   Mic, 
@@ -29,7 +30,8 @@ import {
   FileSpreadsheet,
   X,
   Info,
-  Loader
+  Loader,
+  UserPlus
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -96,6 +98,9 @@ const VideoConference = ({ roomId }) => {
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [meetingTimer, setMeetingTimer] = useState(null);
   const [connectionQuality, setConnectionQuality] = useState('excellent'); // 'excellent', 'good', 'poor'
+  
+  // Breakout room state
+  const [showBreakoutRoom, setShowBreakoutRoom] = useState(false);
   
   // Speech recognition state
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -1389,6 +1394,14 @@ ${actions.map(a => `- ${a}`).join('\n')}`;
     setIsWhiteboardFullscreen(!isWhiteboardFullscreen);
   };
 
+  const toggleBreakoutRoom = () => {
+    setShowBreakoutRoom(!showBreakoutRoom);
+  };
+
+  const closeBreakoutRoom = () => {
+    setShowBreakoutRoom(false);
+  };
+
   return (
     <div className="video-conference">
       {/* Video background with gradient overlay */}
@@ -1625,6 +1638,13 @@ ${actions.map(a => `- ${a}`).join('\n')}`;
           title="AI Meeting Summary"
         >
           <FileText size={20} />
+        </button>
+        <button 
+          className={`floating-action-btn ${showBreakoutRoom ? 'active' : ''}`}
+          onClick={toggleBreakoutRoom}
+          title="Breakout Rooms"
+        >
+          <UserPlus size={20} />
         </button>
         <button 
           className={`floating-action-btn ${showWhiteboard ? 'active' : ''}`}
@@ -1878,6 +1898,17 @@ ${actions.map(a => `- ${a}`).join('\n')}`;
             />
           </div>
         </div>
+      )}
+
+      {/* Breakout Rooms */}
+      {showBreakoutRoom && (
+        <BreakoutRoom 
+          socket={socket} 
+          roomId={roomId}
+          participants={participants}
+          isHost={participants.length > 0 && participants[0].id === socket.id}
+          onClose={closeBreakoutRoom}
+        />
       )}
     </div>
   );

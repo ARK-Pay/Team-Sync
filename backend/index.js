@@ -34,6 +34,9 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
   
+  // Store for breakout rooms
+  const breakoutRooms = new Map();
+  
   // Join a room
   socket.on('join-room', (roomId, userData) => {
     socket.join(roomId);
@@ -138,6 +141,224 @@ io.on('connection', (socket) => {
       if (roomId) {
         socket.to(roomId).emit('screen-share-stopped', userId);
       }
+    }
+  });
+  
+  // Create a breakout room
+  socket.on('create-breakout-room', (data, callback) => {
+    try {
+      console.log(`Creating breakout room for main room: ${data.mainRoomId}`);
+      const { mainRoomId, name } = data;
+      
+      // Create a unique ID for the breakout room
+      const breakoutRoomId = `${mainRoomId}-breakout-${Date.now()}`;
+      
+      // Initialize the breakout room map for the main room if it doesn't exist
+      if (!breakoutRooms.has(mainRoomId)) {
+        breakoutRooms.set(mainRoomId, new Map());
+      }
+      
+      // Store the breakout room info
+      const mainRoomBreakouts = breakoutRooms.get(mainRoomId);
+      mainRoomBreakouts.set(breakoutRoomId, {
+        id: breakoutRoomId,
+        name,
+        participants: []
+      });
+      
+      // Emit the updated breakout room list to everyone in the main room
+      const updatedRooms = Array.from(mainRoomBreakouts.values());
+      io.to(mainRoomId).emit('breakout-rooms-update', updatedRooms);
+      
+      console.log(`Breakout room created: ${breakoutRoomId} (${name})`);
+      callback({ success: true, roomId: breakoutRoomId });
+    } catch (error) {
+      console.error('Error creating breakout room:', error);
+      callback({ success: false, error: 'Failed to create breakout room' });
+    }
+  });
+  
+  // Assign participants to breakout rooms
+  socket.on('assign-to-breakout-rooms', (data, callback) => {
+    try {
+      const { mainRoomId, assignments } = data;
+      console.log(`Assigning participants to breakout rooms for main room: ${mainRoomId}`);
+      
+      if (!breakoutRooms.has(mainRoomId)) {
+        return callback({ success: false, error: 'Main room not found' });
+      }
+      
+      const mainRoomBreakouts = breakoutRooms.get(mainRoomId);
+      
+      // Process assignments
+      for (const assignment of assignments) {
+        const { participantId, roomId } = assignment;
+        
+        // Find the participant socket
+        const participantSocket = io.sockets.sockets.get(participantId);
+        if (!participantSocket) continue;
+        
+        // Get the breakout room
+        const breakoutRoom = mainRoomBreakouts.get(roomId);
+        if (!breakoutRoom) continue;
+        
+        // Add participant to the breakout room
+        breakoutRoom.participants.push({
+          id: participantId,
+          name: participantSocket.userData?.name || 'Anonymous'
+        });
+        
+        // Join the socket to the breakout room
+        participantSocket.join(roomId);
+        
+        // Notify the participant they've been assigned
+        io.to(participantId).emit('assigned-to-breakout', breakoutRoom);
+      }
+      
+      // Emit the updated breakout room list to everyone in the main room
+      const updatedRooms = Array.from(mainRoomBreakouts.values());
+      io.to(mainRoomId).emit('breakout-rooms-update', updatedRooms);
+      
+      callback({ success: true });
+    } catch (error) {
+      console.error('Error assigning to breakout rooms:', error);
+      callback({ success: false, error: 'Failed to assign participants' });
+    }
+  });
+  
+  // Close a breakout room
+  socket.on('close-breakout-room', (data, callback) => {
+    try {
+      const { mainRoomId, breakoutRoomId } = data;
+      console.log(`Closing breakout room: ${breakoutRoomId}`);
+      
+      if (!breakoutRooms.has(mainRoomId)) {
+        return callback({ success: false, error: 'Main room not found' });
+      }
+      
+      const mainRoomBreakouts = breakoutRooms.get(mainRoomId);
+      
+      // Get the breakout room
+      const breakoutRoom = mainRoomBreakouts.get(breakoutRoomId);
+      if (!breakoutRoom) {
+        return callback({ success: false, error: 'Breakout room not found' });
+      }
+      
+      // Notify all participants that the room is closed
+      io.to(breakoutRoomId).emit('breakout-room-closed', breakoutRoomId);
+      
+      // Move all participants back to the main room
+      const room = io.sockets.adapter.rooms.get(breakoutRoomId);
+      if (room) {
+        room.forEach(id => {
+          const userSocket = io.sockets.sockets.get(id);
+          if (userSocket) {
+            userSocket.leave(breakoutRoomId);
+            userSocket.join(mainRoomId);
+          }
+        });
+      }
+      
+      // Remove the breakout room
+      mainRoomBreakouts.delete(breakoutRoomId);
+      
+      // Emit the updated breakout room list to everyone in the main room
+      const updatedRooms = Array.from(mainRoomBreakouts.values());
+      io.to(mainRoomId).emit('breakout-rooms-update', updatedRooms);
+      
+      callback({ success: true });
+    } catch (error) {
+      console.error('Error closing breakout room:', error);
+      callback({ success: false, error: 'Failed to close breakout room' });
+    }
+  });
+  
+  // Join a breakout room
+  socket.on('join-breakout-room', (data) => {
+    try {
+      const { mainRoomId, breakoutRoomId } = data;
+      console.log(`User ${socket.id} joining breakout room: ${breakoutRoomId}`);
+      
+      if (!breakoutRooms.has(mainRoomId)) return;
+      
+      const mainRoomBreakouts = breakoutRooms.get(mainRoomId);
+      const breakoutRoom = mainRoomBreakouts.get(breakoutRoomId);
+      
+      if (!breakoutRoom) return;
+      
+      // Leave the main room and join the breakout room
+      socket.leave(mainRoomId);
+      socket.join(breakoutRoomId);
+      
+      // Notify the user they've joined the breakout room
+      socket.emit('assigned-to-breakout', breakoutRoom);
+      
+      // Add participant to the breakout room if not already there
+      const participantExists = breakoutRoom.participants.some(p => p.id === socket.id);
+      if (!participantExists) {
+        breakoutRoom.participants.push({
+          id: socket.id,
+          name: socket.userData?.name || 'Anonymous'
+        });
+        
+        // Emit the updated breakout room list to everyone in the main room
+        const updatedRooms = Array.from(mainRoomBreakouts.values());
+        io.to(mainRoomId).emit('breakout-rooms-update', updatedRooms);
+      }
+    } catch (error) {
+      console.error('Error joining breakout room:', error);
+    }
+  });
+  
+  // Return to main room
+  socket.on('return-to-main-room', (data) => {
+    try {
+      const { mainRoomId, breakoutRoomId } = data;
+      console.log(`User ${socket.id} returning to main room from breakout room: ${breakoutRoomId}`);
+      
+      if (!breakoutRooms.has(mainRoomId)) return;
+      
+      const mainRoomBreakouts = breakoutRooms.get(mainRoomId);
+      const breakoutRoom = mainRoomBreakouts.get(breakoutRoomId);
+      
+      if (breakoutRoom) {
+        // Remove participant from the breakout room
+        breakoutRoom.participants = breakoutRoom.participants.filter(p => p.id !== socket.id);
+        
+        // Emit the updated breakout room list to everyone in the main room
+        const updatedRooms = Array.from(mainRoomBreakouts.values());
+        io.to(mainRoomId).emit('breakout-rooms-update', updatedRooms);
+      }
+      
+      // Leave the breakout room and join the main room
+      socket.leave(breakoutRoomId);
+      socket.join(mainRoomId);
+    } catch (error) {
+      console.error('Error returning to main room:', error);
+    }
+  });
+  
+  // Broadcast message to all breakout rooms
+  socket.on('broadcast-to-breakout-rooms', (data) => {
+    try {
+      const { mainRoomId, message } = data;
+      console.log(`Broadcasting message to all breakout rooms for main room: ${mainRoomId}`);
+      
+      if (!breakoutRooms.has(mainRoomId)) return;
+      
+      const mainRoomBreakouts = breakoutRooms.get(mainRoomId);
+      
+      // Send message to all breakout rooms
+      for (const [breakoutRoomId, room] of mainRoomBreakouts) {
+        io.to(breakoutRoomId).emit('receive-message', {
+          sender: 'Host',
+          text: message,
+          timestamp: new Date().toISOString(),
+          isHostBroadcast: true
+        });
+      }
+    } catch (error) {
+      console.error('Error broadcasting to breakout rooms:', error);
     }
   });
   

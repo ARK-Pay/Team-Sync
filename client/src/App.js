@@ -19,6 +19,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 
 import VideoCallJoin from "./components/VideoCallJoin"; // New Component for joining a call
 import VideoConference from './components/VideoConference'; // Import from the components folder
+import { FigmaDashboard, FigmaEditor, FigmaViewer } from './components/Figma'; // Import Figma components
 
 // Protected route component
 const ProtectedRoute = ({ children, requireAdmin }) => {
@@ -104,6 +105,30 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <EditorPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/figma" 
+              element={
+                <ProtectedRoute>
+                  <FigmaDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/figma/editor/:projectId" 
+              element={
+                <ProtectedRoute>
+                  <FigmaEditor />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/figma/viewer/:projectId" 
+              element={
+                <ProtectedRoute>
+                  <FigmaViewer />
                 </ProtectedRoute>
               } 
             />

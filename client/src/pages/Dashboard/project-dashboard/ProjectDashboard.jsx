@@ -10,6 +10,7 @@ import ProjectView from '../project-view/ProjectView';
 import AccessManager from '../access-manager/AccessManager';
 import MailSystem from '../mail-system/MailSystem';
 import CalendarPage from '../calendar-system/CalendarPage';
+import { FigmaDashboard } from '../../../components/Figma';
 
 //project dashboard
 const ProjectDashboard = () => {
@@ -41,6 +42,8 @@ const ProjectDashboard = () => {
         return <MailSystem />;
       case 'calendar':
         return <CalendarPage />;
+      case 'figma':
+        return <FigmaDashboard />;
       default:
         return <Hero sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />;
     }

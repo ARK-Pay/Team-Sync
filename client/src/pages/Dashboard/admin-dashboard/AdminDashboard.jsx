@@ -6,6 +6,7 @@ import { useRecoilValue } from 'recoil';
 import { authenticationState } from '../../../store/atoms/authVerifierSelector';
 import { sidebarSelection } from '../../../store/atoms/adminDashboardAtoms';
 import MailSystem from '../mail-system/MailSystem';
+import { FigmaDashboard } from '../../../components/Figma';
 
 /**
  * AdminDashboard component that manages the admin interface.
@@ -39,6 +40,8 @@ const AdminDashboard = () => {
     switch(selectedSidebar) {
       case 'mail':
         return <MailSystem />;
+      case 'figma':
+        return <FigmaDashboard />;
       default:
         return <Hero sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />;
     }

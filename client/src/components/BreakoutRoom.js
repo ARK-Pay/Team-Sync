@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, UserPlus, X, Check, AlertCircle, RefreshCw } from 'lucide-react';
 import './BreakoutRoom.css';
+import { v4 as uuidv4 } from 'uuid'; // Import UUID for generating unique room IDs
 
 const BreakoutRoom = ({ socket, roomId, participants, isHost, onClose }) => {
   const [rooms, setRooms] = useState([]);
@@ -19,21 +20,29 @@ const BreakoutRoom = ({ socket, roomId, participants, isHost, onClose }) => {
 
   // Listen for breakout room events from server
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) {
+      console.error("Socket is not available for breakout rooms");
+      return;
+    }
+    
+    console.log("Breakout Room - Socket connected:", socket.connected, "Socket ID:", socket.id);
 
     // Listen for room updates
     socket.on('breakout-rooms-update', (updatedRooms) => {
+      console.log("Received breakout-rooms-update:", updatedRooms);
       setRooms(updatedRooms);
     });
 
     // Listen for room assignment
     socket.on('assigned-to-breakout', (roomData) => {
+      console.log("Assigned to breakout room:", roomData);
       setCurrentRoom(roomData);
       showSuccess(`You've been assigned to ${roomData.name}`);
     });
 
     // Listen for room closure
     socket.on('breakout-room-closed', (roomId) => {
+      console.log("Breakout room closed:", roomId);
       if (currentRoom && currentRoom.id === roomId) {
         setCurrentRoom(null);
         showSuccess('Returning to main room');
@@ -53,19 +62,20 @@ const BreakoutRoom = ({ socket, roomId, participants, isHost, onClose }) => {
       return;
     }
 
-    setLoading(true);
-    socket.emit('create-breakout-room', { 
-      mainRoomId: roomId, 
-      name: newRoomName.trim() 
-    }, (response) => {
-      setLoading(false);
-      if (response.success) {
-        setNewRoomName('');
-        showSuccess(`Room "${newRoomName}" created successfully`);
-      } else {
-        showError(response.error || 'Failed to create room');
-      }
-    });
+    // Generate a new unique room ID for the breakout room
+    const newRoomId = uuidv4().slice(0, 8);
+    
+    // Create the URL for the new room
+    const newRoomUrl = `/video-call/${newRoomId}`;
+    
+    // Open the new room in a new tab
+    window.open(newRoomUrl, '_blank');
+    
+    // Show success message
+    showSuccess(`Room "${newRoomName}" created successfully. Opening in new tab.`);
+    
+    // Clear the room name input
+    setNewRoomName('');
   };
 
   const assignParticipants = () => {
@@ -238,7 +248,7 @@ const BreakoutRoom = ({ socket, roomId, participants, isHost, onClose }) => {
           className={`tab-btn ${activeTab === 'create' ? 'active' : ''}`}
           onClick={() => setActiveTab('create')}
         >
-          Create
+          New Meeting
         </button>
         <button 
           className={`tab-btn ${activeTab === 'manage' ? 'active' : ''}`}
@@ -254,7 +264,7 @@ const BreakoutRoom = ({ socket, roomId, participants, isHost, onClose }) => {
             <div className="create-room-form">
               <input
                 type="text"
-                placeholder="Enter room name"
+                placeholder="Enter new meeting name"
                 value={newRoomName}
                 onChange={(e) => setNewRoomName(e.target.value)}
                 className="room-name-input"
@@ -265,12 +275,13 @@ const BreakoutRoom = ({ socket, roomId, participants, isHost, onClose }) => {
                 disabled={loading}
               >
                 {loading ? <RefreshCw size={16} className="spin" /> : <UserPlus size={16} />}
-                Create Room
+                Create New Meeting
               </button>
             </div>
 
             <div className="assign-participants">
               <h4>Assign Participants</h4>
+              <p>Create a new meeting for participants to join. This will open a new video conference in a separate tab.</p>
               <div className="participant-assignment-grid">
                 {participants.filter(p => !p.isLocal).map(participant => (
                   <div key={participant.id} className="participant-assignment-row">
