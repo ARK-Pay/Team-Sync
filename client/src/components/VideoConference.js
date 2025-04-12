@@ -119,6 +119,7 @@ const VideoConference = ({ roomId }) => {
   const meetingTimerRef = useRef(null);
   const remoteVideoRefs = useRef({});
   const combinedStreamRef = useRef(null);
+  const peerConnections = useRef({});
   const [showWhiteboard, setShowWhiteboard] = useState(false);
   const [isWhiteboardFullscreen, setIsWhiteboardFullscreen] = useState(false);
   
@@ -376,91 +377,175 @@ const VideoConference = ({ roomId }) => {
     }
   };
 
-  // Toggle camera function with improved handling to fix black screen issue
+  // Toggle camera function with completely new implementation to fix camera issues
   const toggleCamera = async () => {
     try {
+      console.log("[VideoDebug] Toggle camera called, current state:", cameraOn);
+      
       if (cameraOn) {
         // Turn camera off
+        console.log("[VideoDebug] Turning camera off");
+        
         if (stream) {
           const videoTracks = stream.getVideoTracks();
+          console.log("[VideoDebug] Found video tracks:", videoTracks.length);
+          
+          // Instead of just disabling tracks, we'll stop them completely
           videoTracks.forEach(track => {
-            track.stop(); // Stop the track completely instead of just disabling
+            console.log("[VideoDebug] Stopping track:", track.label);
+            track.stop(); // Stop the track completely
           });
           
-          // Remove video tracks from the stream but keep audio tracks
+          // Keep only audio tracks in the stream
           const audioTracks = stream.getAudioTracks();
-          const newStream = new MediaStream(audioTracks);
-          setStream(newStream);
-          
-          // Update local video element
-          if (myVideo.current) {
-            myVideo.current.srcObject = newStream;
+          if (audioTracks.length > 0) {
+            const audioOnlyStream = new MediaStream(audioTracks);
+            setStream(audioOnlyStream);
+            
+            // Update local video element with audio-only stream
+            if (myVideo.current) {
+              console.log("[VideoDebug] Updating video element with audio-only stream");
+              myVideo.current.srcObject = audioOnlyStream;
+            }
           }
         }
+        
+        // Update UI state
         setCameraOn(false);
-        socket.emit('toggle-camera', roomId, false);
+        
+        // Notify other participants
+        socket.emit('toggle-camera', { roomId, cameraOn: false });
+        
+        console.log("[VideoDebug] Camera turned off successfully");
+        showNotificationMessage("Camera turned off", "success");
       } else {
+        // Turn camera on
+        console.log("[VideoDebug] Turning camera on");
+        
         try {
-          // Get fresh video stream
-          const newVideoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-          const newVideoTrack = newVideoStream.getVideoTracks()[0];
+          // Always get a fresh video stream with specific constraints
+          const constraints = {
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              facingMode: "user"
+            }
+          };
           
-          // Get audio from existing stream
+          console.log("[VideoDebug] Requesting video with constraints:", constraints);
+          const videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+          
+          const videoTracks = videoStream.getVideoTracks();
+          if (videoTracks.length === 0) {
+            throw new Error("No video tracks obtained from getUserMedia");
+          }
+          
+          const videoTrack = videoTracks[0];
+          console.log("[VideoDebug] Got new video track:", videoTrack.label);
+          
+          // Get audio tracks from existing stream or request new ones
           let audioTracks = [];
-          if (stream) {
+          if (stream && stream.getAudioTracks().length > 0) {
             audioTracks = stream.getAudioTracks();
+            console.log("[VideoDebug] Using existing audio tracks:", audioTracks.length);
           } else {
-            // If no stream exists, also get audio permission
             try {
+              console.log("[VideoDebug] Requesting new audio");
               const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
               audioTracks = audioStream.getAudioTracks();
+              console.log("[VideoDebug] Got new audio tracks:", audioTracks.length);
             } catch (audioError) {
-              console.error("Could not get audio:", audioError);
+              console.error("[VideoDebug] Could not get audio:", audioError);
+              // Continue without audio if we can't get it
             }
           }
           
-          // Create a new combined stream
-          const newStream = new MediaStream([...audioTracks, newVideoTrack]);
-          setStream(newStream);
+          // Create a new combined stream with both audio and video
+          const combinedStream = new MediaStream([...audioTracks, videoTrack]);
+          console.log("[VideoDebug] Created combined stream with tracks:", combinedStream.getTracks().length);
           
-          // Update video element
+          // Update the stream state
+          setStream(combinedStream);
+          
+          // Update the video element with the new stream
           if (myVideo.current) {
-            myVideo.current.srcObject = newStream;
+            console.log("[VideoDebug] Updating video element with new stream");
+            myVideo.current.srcObject = combinedStream;
             
-            // Ensure video plays
+            // Make sure the video plays
             myVideo.current.onloadedmetadata = () => {
-              myVideo.current.play().catch(err => {
-                console.error("Error playing video:", err);
-              });
+              console.log("[VideoDebug] Video metadata loaded, playing video");
+              myVideo.current.play()
+                .then(() => console.log("[VideoDebug] Video playback started"))
+                .catch(err => console.error("[VideoDebug] Error playing video:", err));
             };
+          } else {
+            console.error("[VideoDebug] Video ref is null");
           }
           
-          // Update peer connections with new track
-          if (peerConnections.current) {
-            Object.values(peerConnections.current).forEach(pc => {
-              const senders = pc.getSenders();
-              const videoSender = senders.find(sender => 
-                sender.track && sender.track.kind === 'video'
-              );
-              
-              if (videoSender) {
-                videoSender.replaceTrack(newVideoTrack);
-              } else {
-                pc.addTrack(newVideoTrack, newStream);
+          // Handle WebRTC peer connections if they exist
+          if (peerConnections && peerConnections.current) {
+            const pcs = peerConnections.current;
+            console.log("[VideoDebug] Updating peer connections with new video track");
+            
+            Object.values(pcs).forEach(pc => {
+              try {
+                // Find existing video sender
+                const senders = pc.getSenders();
+                const videoSender = senders.find(sender => 
+                  sender.track && sender.track.kind === 'video'
+                );
+                
+                if (videoSender) {
+                  // Replace existing track
+                  console.log("[VideoDebug] Replacing video track in peer connection");
+                  videoSender.replaceTrack(videoTrack).catch(err => {
+                    console.error("[VideoDebug] Error replacing track:", err);
+                  });
+                } else {
+                  // Add new track
+                  console.log("[VideoDebug] Adding new video track to peer connection");
+                  pc.addTrack(videoTrack, combinedStream);
+                }
+              } catch (peerError) {
+                console.error("[VideoDebug] Error updating peer connection:", peerError);
               }
             });
+          } else {
+            console.log("[VideoDebug] No peer connections to update");
           }
           
+          // Update UI state
           setCameraOn(true);
-          socket.emit('toggle-camera', roomId, true);
+          
+          // Notify other participants
+          socket.emit('toggle-camera', { roomId, cameraOn: true });
+          
+          console.log("[VideoDebug] Camera turned on successfully");
+          showNotificationMessage("Camera turned on", "success");
         } catch (error) {
-          console.error("Error restarting camera:", error);
-          toast.error("Failed to restart camera");
+          console.error("[VideoDebug] Error turning on camera:", error);
+          
+          // Provide specific error messages based on the error type
+          if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            showNotificationMessage("Camera access denied. Please check your browser permissions.", "error");
+          } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+            showNotificationMessage("No camera found on your device.", "error");
+          } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+            showNotificationMessage("Camera is already in use by another application.", "error");
+          } else if (error.name === 'OverconstrainedError') {
+            showNotificationMessage("Camera doesn't support requested resolution.", "error");
+          } else {
+            showNotificationMessage("Failed to turn on camera: " + error.message, "error");
+          }
+          
+          toast.error("Camera error: " + error.message);
         }
       }
     } catch (error) {
-      console.error("Error toggling camera:", error);
-      toast.error("Failed to toggle camera");
+      console.error("[VideoDebug] Unexpected error toggling camera:", error);
+      toast.error("Failed to toggle camera: " + error.message);
+      showNotificationMessage("Camera operation failed", "error");
     }
   };
 
