@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Video, FileText, Code } from 'lucide-react';
+import { X, Video, FileText, Code, Megaphone } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faFolder, faTasks, faUsers, faBell, faTachometerAlt, faEnvelope, faCalendar } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
@@ -246,6 +246,19 @@ const Sidebar = ({ isOpen, onClose }) => {
                     className={`w-5 h-5 mr-3 ${active === "editor" ? 'text-blue-600' : 'text-gray-500'}`} 
                   />
                   <span className="font-medium">Code Editor</span>
+                </a>
+              </li>
+              
+              <li>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2.5 text-gray-700 rounded-md ${active === "marketing" ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                  onClick={() => { navigate("/marketing"); setActive("marketing"); }}
+                >
+                  <Megaphone 
+                    className={`w-5 h-5 mr-3 ${active === "marketing" ? 'text-blue-600' : 'text-gray-500'}`} 
+                  />
+                  <span className="font-medium">Marketing</span>
                 </a>
               </li>
             </ul>

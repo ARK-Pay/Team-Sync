@@ -3,6 +3,10 @@ import "./index.css"; // Import Tailwind directives first
 import "./App.css"; // Import custom styles second
 import Home from "./pages/Home/Home";
 import EditorPage from "./pages/Editor/EditorPage";
+import MarketingDashboard from "./components/Marketing/MarketingDashboard";
+import CampaignPage from "./components/Marketing/CampaignPage";
+import AnalyticsPage from "./components/Marketing/AnalyticsPage";
+import AudiencePage from "./components/Marketing/AudiencePage";
 import { ThemeProvider } from "styled-components";
 import Navbar from "./pages/Home/components/Navbar";
 import { darkTheme, lightTheme } from "./utils/Theme";
@@ -129,6 +133,38 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <FigmaViewer />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/marketing" 
+              element={
+                <ProtectedRoute>
+                  <MarketingDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/marketing/campaigns" 
+              element={
+                <ProtectedRoute>
+                  <CampaignPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/marketing/analytics" 
+              element={
+                <ProtectedRoute>
+                  <AnalyticsPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/marketing/audience" 
+              element={
+                <ProtectedRoute>
+                  <AudiencePage />
                 </ProtectedRoute>
               } 
             />
