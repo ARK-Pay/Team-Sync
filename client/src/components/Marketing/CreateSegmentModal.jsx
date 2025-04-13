@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Users, Filter, Check } from 'lucide-react';
 
-const CreateSegmentModal = ({ isOpen, onClose, onSave }) => {
+const CreateSegmentModal = ({ isOpen, onClose, onSave, segment = null, isEditing = false }) => {
   const [segmentData, setSegmentData] = useState({
     name: '',
     description: '',
@@ -11,6 +11,26 @@ const CreateSegmentModal = ({ isOpen, onClose, onSave }) => {
   });
   
   const [errors, setErrors] = useState({});
+  
+  // Initialize form with segment data when editing
+  useEffect(() => {
+    if (segment && isEditing) {
+      // If segment has conditions, use them, otherwise use default
+      const conditions = segment.conditions || [
+        { field: 'purchase_count', operator: 'greater_than', value: '5' }
+      ];
+      
+      setSegmentData({
+        name: segment.name || '',
+        description: segment.description || '',
+        conditions,
+        // Preserve other properties for updating
+        id: segment.id,
+        count: segment.count,
+        createdAt: segment.createdAt
+      });
+    }
+  }, [segment, isEditing]);
   
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -86,21 +106,32 @@ const CreateSegmentModal = ({ isOpen, onClose, onSave }) => {
     e.preventDefault();
     
     if (validateForm()) {
-      // Calculate estimated audience size based on conditions
-      // This is just a mock calculation for demonstration
-      let estimatedSize = Math.floor(Math.random() * 10000) + 1000;
+      if (isEditing && segment) {
+        // Update existing segment
+        const updatedSegment = {
+          ...segment,
+          ...segmentData,
+          lastUpdated: new Date().toISOString()
+        };
+        
+        onSave(updatedSegment);
+      } else {
+        // Create a new segment object
+        // Calculate estimated audience size based on conditions
+        let estimatedSize = Math.floor(Math.random() * 10000) + 1000;
+        
+        const newSegment = {
+          id: Date.now(), // Use timestamp as temporary ID
+          name: segmentData.name,
+          description: segmentData.description,
+          count: estimatedSize,
+          createdAt: new Date().toISOString(),
+          lastUpdated: new Date().toISOString()
+        };
+        
+        onSave(newSegment);
+      }
       
-      // Create a new segment object
-      const newSegment = {
-        id: Date.now(), // Use timestamp as temporary ID
-        name: segmentData.name,
-        description: segmentData.description,
-        count: estimatedSize,
-        createdAt: new Date().toISOString(),
-        lastUpdated: new Date().toISOString()
-      };
-      
-      onSave(newSegment);
       onClose();
     }
   };
@@ -111,7 +142,9 @@ const CreateSegmentModal = ({ isOpen, onClose, onSave }) => {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-800">Create Audience Segment</h2>
+          <h2 className="text-xl font-semibold text-gray-800">
+            {isEditing ? 'Edit Audience Segment' : 'Create Audience Segment'}
+          </h2>
           <button 
             onClick={onClose}
             className="text-gray-400 hover:text-gray-500 focus:outline-none"
@@ -252,7 +285,7 @@ const CreateSegmentModal = ({ isOpen, onClose, onSave }) => {
               type="submit"
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
-              Create Segment
+              {isEditing ? 'Update Segment' : 'Create Segment'}
             </button>
           </div>
         </form>
