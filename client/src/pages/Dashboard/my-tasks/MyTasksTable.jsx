@@ -349,6 +349,137 @@ const EditModal = ({ isOpen, onClose, task, onSave, type }) => {
   );
 };
 
+// Filter Modal component for advanced task filtering
+const FilterModal = ({ isOpen, onClose, filters, setFilters, onApply }) => {
+  const [localFilters, setLocalFilters] = useState(filters);
+  
+  useEffect(() => {
+    setLocalFilters(filters);
+  }, [filters]);
+  
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setLocalFilters(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+  
+  const handleApply = () => {
+    setFilters(localFilters);
+    onApply(localFilters);
+    onClose();
+  };
+  
+  const handleReset = () => {
+    const resetFilters = {
+      status: 'all',
+      priority: 'all',
+      project: 'all',
+      deadline: 'all'
+    };
+    setLocalFilters(resetFilters);
+    setFilters(resetFilters);
+    onApply(resetFilters);
+    onClose();
+  };
+  
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black bg-opacity-50"
+        onClick={onClose}
+      />
+      
+      {/* Modal */}
+      <div className="relative bg-white rounded-lg p-6 w-96 max-w-[90%] shadow-xl">
+        <button 
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <h2 className="text-xl font-semibold mb-4">Filter Tasks</h2>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <select
+              name="status"
+              value={localFilters.status}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Statuses</option>
+              <option value="0">To Do</option>
+              <option value="1">In Progress</option>
+              <option value="2">Completed</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <select
+              name="priority"
+              value={localFilters.priority}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Priorities</option>
+              <option value="0">Low</option>
+              <option value="1">Medium</option>
+              <option value="2">High</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
+            <select
+              name="deadline"
+              value={localFilters.deadline}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Deadlines</option>
+              <option value="today">Due Today</option>
+              <option value="week">Due This Week</option>
+              <option value="overdue">Overdue</option>
+              <option value="none">No Deadline</option>
+            </select>
+          </div>
+        </div>
+        
+        <div className="flex justify-between mt-6">
+          <button
+            onClick={handleReset}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+          >
+            Reset
+          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleApply}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MyTasksTable = ({ type = 'assigned' }) => { 
 // State to manage the list of all tasks fetched from the server
   const [tasks, setTasks] = useState([]);
@@ -368,6 +499,14 @@ const MyTasksTable = ({ type = 'assigned' }) => {
   const [assigneesModal, setAssigneesModal] = useState({
     isOpen: false,
     taskId: null
+  });
+  // State to manage the filter modal
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [filters, setFilters] = useState({
+    status: 'all',
+    priority: 'all',
+    project: 'all',
+    deadline: 'all'
   });
    // Function to handle clicks for adding assignees to a specific task
   // It sets the `assigneesModal` state to open and assigns the task ID
@@ -584,48 +723,90 @@ const MyTasksTable = ({ type = 'assigned' }) => {
     });
   };
   
-// Function to handle saving the edited task details
+// Function to handle saving the edited task details or creating a new task
   const handleEditSave = async (editedTask) => {
     try {
       const token = localStorage.getItem('token');
+      const userEmail = localStorage.getItem('userEmail');
       
-      // Find the task in our local state
-      const taskToUpdate = tasks.find(task => 
-        (task._id && task._id === editedTask._id) || (task.id && task.id === editedTask.id)
-      );
+      // Check if this is a new task (no ID) or an existing task
+      const isNewTask = !editedTask._id && !editedTask.id;
       
-      if (!taskToUpdate) {
-        showToast("Task not found", "error");
-        return;
-      }
-      
-      console.log(`Updating task ${editedTask._id || editedTask.id} details`);
-      
-      // Call the API to update the task details
-      await axios.put(
-        `http://localhost:3001/task/${editedTask._id || editedTask.id}/edit-details`,
-        editedTask,
-        {
-          headers: {
-            Authorization: token
+      if (isNewTask) {
+        // Creating a new task
+        console.log('Creating new task:', editedTask);
+        
+        // Make sure we have a project ID
+        if (!editedTask.project_id) {
+          showToast("Project ID is required", "error");
+          return;
+        }
+        
+        // Prepare the new task data
+        const newTaskData = {
+          ...editedTask,
+          creator_id: userEmail,
+          created_at: new Date().toISOString(),
+          status: '0' // Always start as 'To Do'
+        };
+        
+        // Call the API to create a new task
+        const response = await axios.post(
+          `http://localhost:3001/task/project/${editedTask.project_id}/create-task`,
+          newTaskData,
+          {
+            headers: {
+              Authorization: token
+            }
           }
+        );
+        
+        // Add the new task to our local state
+        const newTask = response.data;
+        const updatedTasks = [newTask, ...tasks];
+        setTasks(updatedTasks);
+        setFilteredTasks(updatedTasks);
+        showToast("Task created successfully", "success");
+      } else {
+        // Updating an existing task
+        // Find the task in our local state
+        const taskToUpdate = tasks.find(task => 
+          (task._id && task._id === editedTask._id) || (task.id && task.id === editedTask.id)
+        );
+        
+        if (!taskToUpdate) {
+          showToast("Task not found", "error");
+          return;
         }
-      );
-      
-      // Update the task in local state
-      const updatedTasks = tasks.map(task => {
-        if ((task._id && task._id === editedTask._id) || (task.id && task.id === editedTask.id)) {
-          return editedTask;
-        }
-        return task;
-      });
-      
-      setTasks(updatedTasks);
-      setFilteredTasks(updatedTasks);
-      showToast("Task updated successfully", "success");
+        
+        console.log(`Updating task ${editedTask._id || editedTask.id} details`);
+        
+        // Call the API to update the task details
+        await axios.put(
+          `http://localhost:3001/task/${editedTask._id || editedTask.id}/edit-details`,
+          editedTask,
+          {
+            headers: {
+              Authorization: token
+            }
+          }
+        );
+        
+        // Update the task in local state
+        const updatedTasks = tasks.map(task => {
+          if ((task._id && task._id === editedTask._id) || (task.id && task.id === editedTask.id)) {
+            return editedTask;
+          }
+          return task;
+        });
+        
+        setTasks(updatedTasks);
+        setFilteredTasks(updatedTasks);
+        showToast("Task updated successfully", "success");
+      }
     } catch (error) {
-      console.error('Edit task error:', error);
-      showToast("Failed to update task", "error");
+      console.error(isNewTask ? 'Create task error:' : 'Edit task error:', error);
+      showToast(isNewTask ? "Failed to create task" : "Failed to update task", "error");
     } finally {
       setEditModal({ isOpen: false, task: null });
     }
@@ -782,6 +963,38 @@ const MyTasksTable = ({ type = 'assigned' }) => {
     }
   };
 
+  const handleCreateNewTask = () => {
+    // Create a new empty task with default values
+    const userEmail = localStorage.getItem('userEmail');
+    
+    setEditModal({
+      isOpen: true,
+      task: {
+        status: '0',  // Default to 'To Do'
+        priority: '1', // Default to 'Medium' priority
+        creator_id: userEmail, // Set the current user as creator
+        assignees: [], // Empty assignees list
+        created_at: new Date().toISOString(),
+        deadline: null
+      }
+    });
+  };
+
+  const handleFilter = (newFilters) => {
+    setFilters(newFilters);
+    const filteredTasks = tasks.filter((task) => {
+      const statusMatch = newFilters.status === 'all' || task.status === newFilters.status;
+      const priorityMatch = newFilters.priority === 'all' || task.priority === newFilters.priority;
+      const deadlineMatch = newFilters.deadline === 'all' || 
+        (newFilters.deadline === 'today' && new Date(task.deadline).toISOString().split('T')[0] === new Date().toISOString().split('T')[0]) ||
+        (newFilters.deadline === 'week' && new Date(task.deadline).getTime() <= new Date().getTime() + 604800000) ||
+        (newFilters.deadline === 'overdue' && new Date(task.deadline).getTime() < new Date().getTime()) ||
+        (newFilters.deadline === 'none' && !task.deadline);
+      return statusMatch && priorityMatch && deadlineMatch;
+    });
+    setFilteredTasks(filteredTasks);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -831,6 +1044,14 @@ const MyTasksTable = ({ type = 'assigned' }) => {
         taskId={assigneesModal.taskId}
         onSuccess={fetchTasks}
       />
+      
+      <FilterModal
+        isOpen={filterModalOpen}
+        onClose={() => setFilterModalOpen(false)}
+        filters={filters}
+        setFilters={setFilters}
+        onApply={handleFilter}
+      />
 
       {/* Header and Controls */}
       <div className="p-6 border-b border-gray-200">
@@ -843,15 +1064,14 @@ const MyTasksTable = ({ type = 'assigned' }) => {
           </div>
           
           <div className="flex flex-wrap gap-2">
-            {type === 'created' && (
-              <button 
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-                onClick={() => setEditModal({ isOpen: true, task: { status: '0', priority: '1' } })}
-              >
-                <PlusCircle className="h-4 w-4 mr-2" />
-                <span>New Task</span>
-              </button>
-            )}
+            {/* Make the New Task button always visible regardless of type */}
+            <button 
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+              onClick={() => handleCreateNewTask()}
+            >
+              <PlusCircle className="h-4 w-4 mr-2" />
+              <span>New Task</span>
+            </button>
             
             <button 
               className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
@@ -1057,12 +1277,21 @@ const MyTasksTable = ({ type = 'assigned' }) => {
             )}
             
             <button 
-              type="submit" 
+              type="button" 
               className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-              onClick={handleSearch}
+              onClick={() => setFilterModalOpen(true)}
             >
               <Filter className="h-4 w-4" />
               <span>Filter</span>
+            </button>
+            
+            <button 
+              type="button" 
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+              onClick={() => setFilterModalOpen(true)}
+            >
+              <Filter className="h-4 w-4" />
+              <span>Advanced Filter</span>
             </button>
           </div>
         </div>
