@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { io } from "socket.io-client";
+import socket from "../websocket"; // Import the shared socket instance
 import "./VideoConference.css";
 import { Edit3, Maximize2, Minimize2 } from 'lucide-react';
 import Whiteboard from './Whiteboard';
@@ -36,27 +36,17 @@ import {
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
-// Update the socket.io connection to use proper options
-const socket = io("http://127.0.0.1:3001", {
-  transports: ["websocket", "polling"], // Try websocket first, fallback to polling
-  reconnectionAttempts: 5,
-  reconnectionDelay: 1000,
-  timeout: 20000,
-  withCredentials: true,
-});
+// Remove the local socket.io connection
+// const socket = io("http://127.0.0.1:3001", {
+//   transports: ["websocket", "polling"],
+//   reconnectionAttempts: 5,
+//   reconnectionDelay: 1000,
+//   timeout: 20000,
+//   withCredentials: true,
+// });
 
-// Add connection status monitoring
-socket.on("connect", () => {
-  console.log("Socket connected successfully with ID:", socket.id);
-});
-
-socket.on("connect_error", (error) => {
-  console.error("Socket connection error:", error);
-});
-
-socket.on("disconnect", (reason) => {
-  console.log("Socket disconnected:", reason);
-});
+// Use the imported socket instance
+// Connection monitoring is now handled in websocket.js
 
 const VideoConference = ({ roomId }) => {
   // Main state variables

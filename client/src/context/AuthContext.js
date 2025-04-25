@@ -42,17 +42,25 @@ export function AuthProvider({ children }) {
           // Token is valid, set user data
           const userData = {
             email: decoded.email,
-            name: localStorage.getItem('userName'),
-            isAdmin: decoded.admin_id ? true : false,
+            name: localStorage.getItem('userName') || decoded.email.split('@')[0],
+            isAdmin: !!decoded.admin_id,
             userId: decoded.admin_id || decoded.user_id,
-            profileImage: localStorage.getItem('userProfileImage')
+            profileImage: localStorage.getItem('userProfileImage') || `https://api.dicebear.com/7.x/avataaars/svg?seed=${decoded.email}`
           };
 
+          // Ensure redux state is updated with the user info
           setUser(userData);
-          dispatch(loginSuccess(userData));
+          dispatch(loginSuccess({
+            ...userData,
+            token: token // Make sure token is included in redux state
+          }));
         } catch (error) {
           console.error("Token validation error:", error);
-          handleLogout();
+          // Don't log out immediately on error - this causes reconnection cycles
+          // Instead, just clear the invalid token
+          if (error.message.includes("Invalid token") || error.message.includes("jwt")) {
+            localStorage.removeItem('token');
+          }
         }
       }
       
@@ -60,6 +68,16 @@ export function AuthProvider({ children }) {
     };
 
     checkLoggedIn();
+    
+    // Also set up a listener for storage events (in case token changes in another tab)
+    const handleStorageChange = (e) => {
+      if (e.key === 'token') {
+        checkLoggedIn();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, [dispatch]);
 
   // Handle user logout
@@ -70,7 +88,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('isAdmin');
     localStorage.removeItem('userId');
     localStorage.removeItem('userJoindate');
-    localStorage.removeItem('userProfileImage'); // Also remove profile image
+    localStorage.removeItem('userProfileImage');
     
     setUser(null);
     dispatch(logout());
@@ -79,7 +97,7 @@ export function AuthProvider({ children }) {
 
   // Login handler
   const handleLogin = (userData, token) => {
-    console.log('Login data received:', userData); // Log the data for debugging
+    console.log('Login data received:', userData);
     localStorage.setItem('token', token);
     
     // Save user data to localStorage
@@ -91,15 +109,22 @@ export function AuthProvider({ children }) {
     if (userData.profile_image) {
       console.log('Saving profile image:', userData.profile_image);
       localStorage.setItem('userProfileImage', userData.profile_image);
+    } else if (userData.email) {
+      // Set a default profile image based on email if none provided
+      const defaultImage = `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.email}`;
+      localStorage.setItem('userProfileImage', defaultImage);
     }
     
-    // Create a user object with all the data
+    // Include token in the user object for redux store
     const userObj = {
       ...userData,
-      profileImage: userData.profile_image // Make sure profileImage is included
+      profileImage: userData.profile_image || localStorage.getItem('userProfileImage'),
+      token: token // Add token to the user object
     };
     
     setUser(userObj);
+    // Update Redux state
+    dispatch(loginSuccess(userObj));
   };
 
   // Return the context provider with values

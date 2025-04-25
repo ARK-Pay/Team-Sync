@@ -3,6 +3,8 @@ import axios from 'axios';
 import { ToastContainer, toast } from 'react-toastify';
 import { X } from 'lucide-react';
 import 'react-toastify/dist/ReactToastify.css';
+import { useRecoilState } from 'recoil';
+import { projectRefreshTrigger } from '../../../../../store/atoms/adminDashboardAtoms';
 
 //
 // Functional component for adding a new project
@@ -15,7 +17,6 @@ const AddProjectModal = ({ isOpen, onClose }) => {
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState([]);
   const [errors, setErrors] = useState({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [touched, setTouched] = useState({
     projectName: false,
     projectDescription: false,
@@ -23,6 +24,8 @@ const AddProjectModal = ({ isOpen, onClose }) => {
     priority: false,
     tags: false,
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useRecoilState(projectRefreshTrigger);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -64,10 +67,15 @@ const AddProjectModal = ({ isOpen, onClose }) => {
     if (touched.tags) validateTags(tags);
   }, [tags, touched.tags]);
 
-  // Asynchronous function to check if a project name already exists
+  // Check if a project with the same name already exists
   const checkProjectNameExists = async (name) => {
     try {
-      const response = await axios.get(`http://localhost:3001/project/check-name?name=${name}`);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`http://localhost:3001/project/check-name?name=${encodeURIComponent(name)}`, {
+        headers: {
+          Authorization: token,
+        },
+      });
       return response.data.exists;
     } catch (error) {
       console.error('Error checking project name:', error);
@@ -146,7 +154,11 @@ const AddProjectModal = ({ isOpen, onClose }) => {
         if (response.status === 200) {
           toast.success('Project created successfully!');
           resetForm();
-          onClose(); // Call onClose to trigger dashboard refresh in parent component
+          
+          // Trigger project list refresh
+          setRefreshTrigger(prevKey => prevKey + 1);
+          
+          onClose(); // Close modal
         }
       } catch (error) {
         if (error.response) {

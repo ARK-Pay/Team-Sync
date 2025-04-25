@@ -6,9 +6,25 @@ const API = axios.create({
   baseURL: process.env.REACT_APP_API_URL || "http://localhost:3001" 
 });
 
-// Helper function to validate token format
+// Function to check if a token is valid
 const isValidToken = (token) => {
-  return token && token !== 'null' && token !== 'undefined' && token.length > 10;
+  if (!token) return false;
+  
+  try {
+    // Basic validation - check if it's a properly formatted JWT
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    
+    // Try to decode and check expiration
+    const decoded = JSON.parse(atob(parts[1]));
+    const currentTime = Math.floor(Date.now() / 1000);
+    
+    // Check if expiration exists and is in the future
+    return decoded.exp && decoded.exp > currentTime;
+  } catch (error) {
+    console.error('Token validation error:', error);
+    return false;
+  }
 };
 
 // Request interceptor to add authentication token to headers
@@ -17,16 +33,15 @@ API.interceptors.request.use(
     // Get token from localStorage
     const token = localStorage.getItem('token');
     
-    // Only add token if it's valid
-    if (isValidToken(token)) {
-      config.headers.authorization = token;
-      console.log('Sending request with token:', token);
-    } else {
-      console.warn('Invalid token detected:', token);
-      // If we're not on a login/signup page and token is invalid, redirect to login
-      if (!config.url.includes('/signin') && !config.url.includes('/signup')) {
-        console.warn('Invalid token for authenticated route, redirecting to login');
-        // We'll handle this in the response interceptor
+    // Only add token if it exists (we'll validate on the backend)
+    if (token) {
+      // Add the token as a Bearer token in the authorization header
+      config.headers.authorization = `Bearer ${token}`;
+      
+      // For debugging only
+      if (process.env.NODE_ENV !== 'production') {
+        const sanitizedToken = token.substring(0, 15) + '...';
+        console.log(`Request to ${config.url} with token: ${sanitizedToken}`);
       }
     }
     

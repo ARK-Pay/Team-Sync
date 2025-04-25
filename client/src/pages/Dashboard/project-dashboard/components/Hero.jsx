@@ -365,175 +365,180 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
       const lastFetchTime = localStorage.getItem('dashboard_last_fetch_time');
       const currentTime = Date.now();
       
-      if (!force && lastFetchTime && (currentTime - parseInt(lastFetchTime)) < 30000) {
-        console.log("Using cached dashboard data (fetched within last 30 seconds)");
-        return;
-      }
+      // Add a flag to localStorage that indicates if this is the first load after a page refresh
+      const isInitialLoad = sessionStorage.getItem('dashboard_initial_load') !== 'true';
       
-      setIsRefreshing(true);
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        console.error("No authentication token found. Cannot fetch dashboard data.");
-        return;
-      }
-      
-      console.log("Fetching dashboard data from backend...");
-      
-      // Store current fetch time
-      localStorage.setItem('dashboard_last_fetch_time', currentTime.toString());
-      
-      // Create an object to store all API responses
-      const apiResponsesData = {};
-      
-      // Fetch projects data
-      try {
-        const projectsResponse = await axios.get('http://localhost:3001/project/get-my-assigned-projects', {
-          headers: { 'authorization': token }
-        });
-        apiResponsesData.assignedProjects = projectsResponse.data || [];
-        console.log(`Assigned projects fetched: ${apiResponsesData.assignedProjects.length}`);
-      } catch (error) {
-        console.error("Error fetching assigned projects:", error);
-        apiResponsesData.assignedProjects = [];
-      }
-      
-      // Fetch projects created by the user
-      try {
-        const createdProjectsResponse = await axios.get('http://localhost:3001/project/my-created-projects', {
-          headers: { 'authorization': token }
-        });
-        apiResponsesData.createdProjects = createdProjectsResponse.data || [];
-        console.log(`Created projects fetched: ${apiResponsesData.createdProjects.length}`);
-      } catch (error) {
-        console.error("Error fetching created projects:", error);
-        apiResponsesData.createdProjects = [];
-      }
-      
-      // Fetch tasks data - both assigned and created tasks
-      try {
-        const userId = localStorage.getItem('userId');
-        const userEmail = localStorage.getItem('userEmail');
+      // If this is the initial load or a forced refresh, always fetch new data
+      if (isInitialLoad || force || !lastFetchTime || (currentTime - parseInt(lastFetchTime)) >= 30000) {
+        // Mark that we've done the initial load in this session
+        sessionStorage.setItem('dashboard_initial_load', 'true');
         
-        // Fetch assigned tasks
-        const tasksResponse = await axios.get(`http://localhost:3001/task/user/${userId}/assigned-tasks`, {
-          headers: { 'authorization': token }
-        });
-        apiResponsesData.assignedTasks = tasksResponse.data || [];
-        console.log(`Assigned tasks fetched: ${apiResponsesData.assignedTasks.length}`);
+        setIsRefreshing(true);
+        const token = localStorage.getItem('token');
         
-        // Fetch created tasks
-        const createdTasksResponse = await axios.get(`http://localhost:3001/task/user/${userEmail}/created-tasks`, {
-          headers: { 'authorization': token }
-        });
-        apiResponsesData.createdTasks = createdTasksResponse.data || [];
-        console.log(`Created tasks fetched: ${apiResponsesData.createdTasks.length}`);
-        
-        // Combine all tasks and remove duplicates
-        apiResponsesData.allTasks = [...apiResponsesData.assignedTasks, ...apiResponsesData.createdTasks]
-          .filter((task, index, self) => index === self.findIndex(t => t.id === task.id));
-        console.log(`Total unique tasks: ${apiResponsesData.allTasks.length}`);
-      } catch (error) {
-        console.error("Error fetching tasks:", error);
-        apiResponsesData.assignedTasks = [];
-        apiResponsesData.createdTasks = [];
-        apiResponsesData.allTasks = [];
-      }
-      
-      // Fetch users/team members data
-      try {
-        // Try multiple endpoints for fetching users
-        let usersResponse;
-        
-        try {
-          // First try the project-specific users endpoint if we have a project ID
-          const pid = localStorage.getItem('project_id');
-          if (pid) {
-            usersResponse = await axios.get(`http://localhost:3001/project/get-all-users/${pid}`, {
-              headers: { 'authorization': token }
-            });
-            console.log(`Project users fetched from project ${pid}`);
-          } else {
-            // If no project ID, try the generic users endpoint
-            throw new Error("No project ID found, falling back to all-users endpoint");
-          }
-        } catch (err) {
-          // If that fails, try the admin all-users endpoint
-          try {
-            usersResponse = await axios.get('http://localhost:3001/admin/all-users', {
-              headers: { 'authorization': token }
-            });
-            console.log("All users fetched from admin endpoint");
-          } catch (adminErr) {
-            // If that also fails, try the basic users endpoint
-            usersResponse = await axios.get('http://localhost:3001/user/all-users', {
-              headers: { 'authorization': token }
-            });
-            console.log("All users fetched from user endpoint");
-          }
+        if (!token) {
+          console.error("No authentication token found. Cannot fetch dashboard data.");
+          return;
         }
         
-        apiResponsesData.users = usersResponse.data || [];
-        console.log(`Users fetched: ${apiResponsesData.users.length}`);
-      } catch (error) {
-        console.error("Error fetching users:", error);
-        apiResponsesData.users = [];
-      }
-      
-      // Store the API responses
-      setApiResponses(apiResponsesData);
-      
-      // Combine and sort projects by creation date
-      const allProjects = [...apiResponsesData.assignedProjects, ...apiResponsesData.createdProjects]
-        .filter((project, index, self) => 
-          index === self.findIndex(p => p.id === project.id)
-        )
-        .sort((a, b) => {
-          const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
-          const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
-          return dateB - dateA;
+        console.log("Fetching dashboard data from backend...");
+        
+        // Store current fetch time
+        localStorage.setItem('dashboard_last_fetch_time', currentTime.toString());
+        
+        // Create an object to store all API responses
+        const apiResponsesData = {};
+        
+        // Fetch projects data
+        try {
+          const projectsResponse = await axios.get('http://localhost:3001/project/get-my-assigned-projects', {
+            headers: { 'authorization': token }
+          });
+          apiResponsesData.assignedProjects = projectsResponse.data || [];
+          console.log(`Assigned projects fetched: ${apiResponsesData.assignedProjects.length}`);
+        } catch (error) {
+          console.error("Error fetching assigned projects:", error);
+          apiResponsesData.assignedProjects = [];
+        }
+        
+        // Fetch projects created by the user
+        try {
+          const createdProjectsResponse = await axios.get('http://localhost:3001/project/my-created-projects', {
+            headers: { 'authorization': token }
+          });
+          apiResponsesData.createdProjects = createdProjectsResponse.data || [];
+          console.log(`Created projects fetched: ${apiResponsesData.createdProjects.length}`);
+        } catch (error) {
+          console.error("Error fetching created projects:", error);
+          apiResponsesData.createdProjects = [];
+        }
+        
+        // Fetch tasks data - both assigned and created tasks
+        try {
+          const userId = localStorage.getItem('userId');
+          const userEmail = localStorage.getItem('userEmail');
+          
+          // Fetch assigned tasks
+          const tasksResponse = await axios.get(`http://localhost:3001/task/user/${userId}/assigned-tasks`, {
+            headers: { 'authorization': token }
+          });
+          apiResponsesData.assignedTasks = tasksResponse.data || [];
+          console.log(`Assigned tasks fetched: ${apiResponsesData.assignedTasks.length}`);
+          
+          // Fetch created tasks
+          const createdTasksResponse = await axios.get(`http://localhost:3001/task/user/${userEmail}/created-tasks`, {
+            headers: { 'authorization': token }
+          });
+          apiResponsesData.createdTasks = createdTasksResponse.data || [];
+          console.log(`Created tasks fetched: ${apiResponsesData.createdTasks.length}`);
+          
+          // Combine all tasks and remove duplicates
+          apiResponsesData.allTasks = [...apiResponsesData.assignedTasks, ...apiResponsesData.createdTasks]
+            .filter((task, index, self) => index === self.findIndex(t => t.id === task.id));
+          console.log(`Total unique tasks: ${apiResponsesData.allTasks.length}`);
+        } catch (error) {
+          console.error("Error fetching tasks:", error);
+          apiResponsesData.assignedTasks = [];
+          apiResponsesData.createdTasks = [];
+          apiResponsesData.allTasks = [];
+        }
+        
+        // Fetch users/team members data
+        try {
+          // Try multiple endpoints for fetching users
+          let usersResponse;
+          
+          try {
+            // First try the project-specific users endpoint if we have a project ID
+            const pid = localStorage.getItem('project_id');
+            if (pid) {
+              usersResponse = await axios.get(`http://localhost:3001/project/get-all-users/${pid}`, {
+                headers: { 'authorization': token }
+              });
+              console.log(`Project users fetched from project ${pid}`);
+            } else {
+              // If no project ID, try the generic users endpoint
+              throw new Error("No project ID found, falling back to all-users endpoint");
+            }
+          } catch (err) {
+            // If that fails, try the admin all-users endpoint
+            try {
+              usersResponse = await axios.get('http://localhost:3001/admin/all-users', {
+                headers: { 'authorization': token }
+              });
+              console.log("All users fetched from admin endpoint");
+            } catch (adminErr) {
+              // If that also fails, try the basic users endpoint
+              usersResponse = await axios.get('http://localhost:3001/user/all-users', {
+                headers: { 'authorization': token }
+              });
+              console.log("All users fetched from user endpoint");
+            }
+          }
+          
+          apiResponsesData.users = usersResponse.data || [];
+          console.log(`Users fetched: ${apiResponsesData.users.length}`);
+        } catch (error) {
+          console.error("Error fetching users:", error);
+          apiResponsesData.users = [];
+        }
+        
+        // Store the API responses
+        setApiResponses(apiResponsesData);
+        
+        // Combine and sort projects by creation date
+        const allProjects = [...apiResponsesData.assignedProjects, ...apiResponsesData.createdProjects]
+          .filter((project, index, self) => 
+            index === self.findIndex(p => p.id === project.id)
+          )
+          .sort((a, b) => {
+            const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+            const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
+            return dateB - dateA;
+          });
+        
+        // Count completed tasks
+        const completedTasks = (apiResponsesData.allTasks || []).filter(task => 
+          task.status === '2' || 
+          task.status === 2 || 
+          task.status === 'completed' || 
+          task.status === 'Completed' || 
+          task.status?.toLowerCase() === 'completed'
+        ).length;
+        
+        console.log("Dashboard data summary:");
+        console.log(`- Total Projects: ${allProjects.length}`);
+        console.log(`- Total Tasks: ${(apiResponsesData.allTasks || []).length}`);
+        console.log(`- Completed Tasks: ${completedTasks}`);
+        console.log(`- Team Members: ${apiResponsesData.users ? apiResponsesData.users.length : 0}`);
+        
+        // Store the fetch timestamp
+        setLastUpdated(new Date());
+        
+        // Update dashboard stats
+        setDashboardStats({
+          totalProjects: allProjects.length,
+          totalTasks: (apiResponsesData.allTasks || []).length,
+          completedTasks: completedTasks,
+          teamMembers: apiResponsesData.users ? apiResponsesData.users.length : 0,
+          recentProjects: allProjects.slice(0, 5)
         });
-      
-      // Count completed tasks
-      const completedTasks = (apiResponsesData.allTasks || []).filter(task => 
-        task.status === '2' || 
-        task.status === 2 || 
-        task.status === 'completed' || 
-        task.status === 'Completed' || 
-        task.status?.toLowerCase() === 'completed'
-      ).length;
-      
-      console.log("Dashboard data summary:");
-      console.log(`- Total Projects: ${allProjects.length}`);
-      console.log(`- Total Tasks: ${(apiResponsesData.allTasks || []).length}`);
-      console.log(`- Completed Tasks: ${completedTasks}`);
-      console.log(`- Team Members: ${apiResponsesData.users.length}`);
-      
-      // Store the fetch timestamp
-      setLastUpdated(new Date());
-      
-      // Update dashboard stats
-      setDashboardStats({
-        totalProjects: allProjects.length,
-        totalTasks: (apiResponsesData.allTasks || []).length,
-        completedTasks: completedTasks,
-        teamMembers: apiResponsesData.users.length,
-        recentProjects: allProjects.slice(0, 5)
-      });
-      
-      // Store these values in localStorage for other components to use
-      localStorage.setItem('dashboard_totalProjects', allProjects.length);
-      localStorage.setItem('dashboard_totalTasks', (apiResponsesData.allTasks || []).length);
-      localStorage.setItem('dashboard_completedTasks', completedTasks);
-      localStorage.setItem('dashboard_teamMembers', apiResponsesData.users.length);
-      
-      // After fetching all data and updating dashboard stats
-      // Generate new task suggestions
-      const suggestions = generateTaskSuggestions();
-      if (suggestions && suggestions.length > 0) {
-        setTaskSuggestions(suggestions);
+        
+        // Store these values in localStorage for other components to use
+        localStorage.setItem('dashboard_totalProjects', allProjects.length);
+        localStorage.setItem('dashboard_totalTasks', (apiResponsesData.allTasks || []).length);
+        localStorage.setItem('dashboard_completedTasks', completedTasks);
+        localStorage.setItem('dashboard_teamMembers', apiResponsesData.users ? apiResponsesData.users.length : 0);
+        
+        // After fetching all data and updating dashboard stats
+        // Generate new task suggestions
+        const suggestions = generateTaskSuggestions();
+        if (suggestions && suggestions.length > 0) {
+          setTaskSuggestions(suggestions);
+        }
+      } else {
+        console.log("Using cached dashboard data (fetched within last 30 seconds)");
       }
-      
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
     } finally {

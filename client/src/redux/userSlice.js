@@ -1,11 +1,15 @@
 import { createSlice } from "@reduxjs/toolkit";
 
+// Check if we have a token in localStorage on startup
+const token = localStorage.getItem('token');
+
 // Initial state for the user slice
 const initialState = {
   currentUser: null,
   loading: false,
   error: false,
-  isLoggedIn: false, // Added isLoggedIn state
+  isLoggedIn: !!token, // Set initial login state based on token existence
+  token: token || null, // Include token in the state
 };
 
 // Create a slice of the Redux store for user management
@@ -20,8 +24,14 @@ export const userSlice = createSlice({
     // Action to handle successful login
     loginSuccess: (state, action) => {
       state.loading = false;
-      state.isLoggedIn = true; // Set isLoggedIn to true on successful login
-      localStorage.setItem('token', action.payload.token);
+      state.currentUser = action.payload;
+      state.isLoggedIn = true;
+      state.token = action.payload.token;
+      
+      // Ensure token is saved to localStorage
+      if (action.payload.token) {
+        localStorage.setItem('token', action.payload.token);
+      }
     },
     // Action to handle failed login attempts
     loginFailure: (state) => {
@@ -31,9 +41,12 @@ export const userSlice = createSlice({
     // Action to handle user logout
     logout: (state) => {
       state.currentUser = null;
-      state.isLoggedIn = false; // Set isLoggedIn to false on logout
+      state.isLoggedIn = false;
       state.loading = false;
       state.error = false;
+      state.token = null;
+      
+      // Clear token from localStorage
       localStorage.removeItem('token');
     },
     // Action to verify the current user
@@ -42,10 +55,15 @@ export const userSlice = createSlice({
         state.currentUser.verified = action.payload;
       }
     },
+    // Action to update the user's token
+    updateToken: (state, action) => {
+      state.token = action.payload;
+      localStorage.setItem('token', action.payload);
+    },
   },
 });
 
 // Exporting actions for use in components
-export const { loginStart, loginSuccess, loginFailure, logout, verified } = userSlice.actions;
+export const { loginStart, loginSuccess, loginFailure, logout, verified, updateToken } = userSlice.actions;
 
 export default userSlice.reducer;

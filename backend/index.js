@@ -5,6 +5,9 @@ const { connectDB } = require('./db');
 const http = require('http');
 const { Server } = require('socket.io');
 
+// Set environment to production to reduce logs
+process.env.NODE_ENV = 'production';
+
 const adminRouter = require("./routes/admin");
 const userRouter = require("./routes/user");
 const projectRouter = require("./routes/project");
@@ -27,12 +30,27 @@ const io = new Server(server, {
     origin: "*", // Allow all origins
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  // Add configuration to reduce frequent disconnects and reduce logs
+  pingTimeout: 60000, // Increase ping timeout to 1 minute
+  pingInterval: 25000, // Ping clients every 25 seconds
+  transports: ["polling", "websocket"],
+  allowEIO3: true,
+  connectTimeout: 30000, // Increase connection timeout
+  maxHttpBufferSize: 1e8, // 100 MB for larger file transfers if needed
 });
 
 // Socket.io setup for video conferencing
 io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
+  // Only log connections in development environment
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`User connected: ${socket.id}`);
+  }
+  
+  // Handle socket errors to prevent crashing
+  socket.on('error', (error) => {
+    console.error(`Socket error for ${socket.id}:`, error);
+  });
   
   // Store for breakout rooms
   const breakoutRooms = new Map();
@@ -362,9 +380,13 @@ io.on('connection', (socket) => {
     }
   });
   
-  // Disconnect
-  socket.on('disconnect', () => {
-    console.log(`User disconnected: ${socket.id}`);
+  socket.on('disconnect', (reason) => {
+    // Only log disconnections in development environment
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`User disconnected: ${socket.id}, reason: ${reason}`);
+    }
+    
+    // Handle any cleanup needed here
     if (socket.userData && socket.userData.roomId) {
       socket.to(socket.userData.roomId).emit('user-left', socket.id);
     }

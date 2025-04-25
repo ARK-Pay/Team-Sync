@@ -2,6 +2,7 @@
 import { configureStore, combineReducers } from "@reduxjs/toolkit";
 import userReducer from "./userSlice";
 import snackbarReducer from "./snackbarSlice";
+import editorReducer from "./editorSlice";
 import {
   persistStore,
   persistReducer,
@@ -22,7 +23,11 @@ const persistConfig = {
 };
 
 // Combining user and snackbar reducers into a root reducer
-const rootReducer = combineReducers({ user: userReducer, snackbar: snackbarReducer });
+const rootReducer = combineReducers({ 
+  user: userReducer, 
+  snackbar: snackbarReducer,
+  editor: editorReducer 
+});
 
 // Creating a persisted reducer using the configuration and root reducer
 const persistedReducer = persistReducer(persistConfig, rootReducer);

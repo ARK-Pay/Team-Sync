@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Filter, Plus, Search, Calendar, AlertCircle, Clock, Tag, Layers, User, CheckCircle, CheckSquare, Flag, BarChart2 } from 'lucide-react';
+import { Filter, Plus, Search, Calendar, AlertCircle, Clock, Tag, Layers, User, CheckCircle, CheckSquare, Flag, BarChart2, RefreshCw } from 'lucide-react';
 import SearchBar from './common/SearchBar';
 import TableHeader from './table/TableHeader';
 import ProjectRow from './table/ProjectRow';
-import { useSetRecoilState } from 'recoil';
-import { sidebarSelection } from '../../../../store/atoms/adminDashboardAtoms';
+import { useSetRecoilState, useRecoilState } from 'recoil';
+import { sidebarSelection, projectRefreshTrigger } from '../../../../store/atoms/adminDashboardAtoms';
+import { toast } from 'react-toastify';
 
 const UnifiedProjectTable = ({ 
   endpoint, 
@@ -22,7 +23,9 @@ const UnifiedProjectTable = ({
   const [sortOrder, setSortOrder] = useState('asc');
   const [isAnimated, setIsAnimated] = useState(true);
   const [activeFilter, setActiveFilter] = useState('all');
+  const [lastRefreshTime, setLastRefreshTime] = useState(new Date());
   const setSidebarSelection = useSetRecoilState(sidebarSelection);
+  const [refreshKey, setRefreshKey] = useRecoilState(projectRefreshTrigger);
   
   // Get current theme from localStorage
   const currentTheme = localStorage.getItem('dashboard_theme') || 'blue';
@@ -98,36 +101,57 @@ const UnifiedProjectTable = ({
   const theme = themes[currentTheme];
   const isCreatedProjectsView = endpoint === "my-created-projects";
 
-  //fetch projects 
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const response = await axios.get(`http://localhost:3001/project/${endpoint}`, {
-          headers: {
-            'authorization': token,
-            'Content-Type': 'application/json'
-          },
-        });
+  // Memoized fetch projects function to prevent unnecessary re-renders
+  const fetchProjects = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Check if this is the first load in this session
+      const isInitialLoad = sessionStorage.getItem('projects_initial_load') !== 'true';
+      
+      // Mark that we've done the initial fetch in this session
+      sessionStorage.setItem('projects_initial_load', 'true');
+      
+      const response = await axios.get(`http://localhost:3001/project/${endpoint}`, {
+        headers: {
+          'authorization': token,
+          'Content-Type': 'application/json'
+        },
+      });
 
-        let projectData = response.data;
-        
-        // Filter approved projects if needed
-        if (filterApproved) {
-          projectData = projectData.filter(project => project.is_approved);
-        }
-
-        setProjects(projectData);
-        setFilteredProjects(projectData);
-      } catch (error) {
-        setError(error.response ? error.response.data.message : error.message);
-      } finally {
-        setLoading(false);
+      let projectData = response.data;
+      
+      // Filter approved projects if needed
+      if (filterApproved) {
+        projectData = projectData.filter(project => project.is_approved);
       }
-    };
 
-    fetchProjects();
+      setProjects(projectData);
+      setFilteredProjects(projectData);
+      setLastRefreshTime(new Date());
+    } catch (error) {
+      setError(error.response ? error.response.data.message : error.message);
+      toast.error("Failed to fetch projects. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }, [endpoint, filterApproved]);
+
+  // Fetch projects on mount and whenever refreshKey changes
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects, refreshKey]);
+
+  // Function to manually refresh projects 
+  const refreshProjects = () => {
+    setRefreshKey(prevKey => prevKey + 1);
+  };
+
+  // Format the last refresh time
+  const getFormattedRefreshTime = () => {
+    return lastRefreshTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   //search function
   const handleSearch = (e) => {
@@ -361,8 +385,20 @@ const UnifiedProjectTable = ({
       
       <div className="mb-8">
         {/* Search and filters */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
-          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="w-full md:w-auto flex items-center">
+            <h2 className="text-xl font-semibold">{title}</h2>
+            <button 
+              onClick={refreshProjects} 
+              className="ml-2 p-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              title="Refresh projects"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+            <span className="text-xs text-gray-500 ml-2">Last updated: {getFormattedRefreshTime()}</span>
+          </div>
+          
+          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
             <SearchBar 
               placeholder="Search for projects"
               value={searchQuery}
@@ -379,7 +415,7 @@ const UnifiedProjectTable = ({
             </button>
           </form>
           
-          <div className="flex gap-2 w-full lg:w-auto justify-between">
+          <div className="flex gap-2 w-full md:w-auto justify-between">
             {/* Filter buttons */}
             <div className="flex gap-1 overflow-x-auto">
               <button 

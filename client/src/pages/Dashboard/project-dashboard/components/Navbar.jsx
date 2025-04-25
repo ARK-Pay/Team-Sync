@@ -4,7 +4,7 @@ import { useDispatch } from "react-redux";
 import { logout } from '../../../../redux/userSlice';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCaretDown, faUser, faCog, faSignOutAlt, faQuestionCircle, faProjectDiagram } from '@fortawesome/free-solid-svg-icons';
+import { faCaretDown, faUser, faCog, faSignOutAlt, faQuestionCircle, faProjectDiagram, faBell } from '@fortawesome/free-solid-svg-icons';
 import ProfileModal from '../../profile/ProfileModal';
 import ResetPassword from "../../../../components/ResetPassword";
 import { useRecoilState } from 'recoil';
@@ -20,6 +20,7 @@ const Navbar = () => {
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const [isModalOpen, setModalOpen] = useState(false);
   const [isResetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [profileImage, setProfileImage] = useState(
     localStorage.getItem('userProfileImage') || "https://flowbite.com/docs/images/people/profile-picture-5.jpg"
   );
@@ -100,6 +101,23 @@ const Navbar = () => {
       window.removeEventListener('storage', handleStorageChange);
     };
   }, [isModalOpen]);
+
+  // Fetch notifications count
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
+
+  const fetchNotifications = async () => {
+    try {
+      const uid = localStorage.getItem("userId");
+      const res = await axios.get(`http://localhost:3001/comment/total-unread/${uid}`);
+      if (res.data.success) {
+        setUnreadNotifications(res.data.total_unread);
+      }
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+    }
+  };
   
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -128,6 +146,10 @@ const Navbar = () => {
   const handleResetPasswordOpen = () => {
     setModalOpen(false);
     setResetPasswordOpen(true);
+  };
+  
+  const handleNotificationClick = () => {
+    setSelectedSidebar("notifications");
   };
   
   // Handle project selection
@@ -236,6 +258,19 @@ const Navbar = () => {
         <div className="flex items-center space-x-3">
           <button className="hidden md:flex items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100">
             <FontAwesomeIcon icon={faQuestionCircle} className="w-5 h-5" />
+          </button>
+          
+          {/* Notification Icon */}
+          <button 
+            className="flex items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 relative"
+            onClick={handleNotificationClick}
+          >
+            <FontAwesomeIcon icon={faBell} className="w-5 h-5" />
+            {unreadNotifications > 0 && (
+              <span className="absolute top-0 right-0 inline-flex items-center justify-center w-4 h-4 text-xs font-bold text-white bg-red-500 rounded-full">
+                {unreadNotifications}
+              </span>
+            )}
           </button>
           
           <div className="relative">

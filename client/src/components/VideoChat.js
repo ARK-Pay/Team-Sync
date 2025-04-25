@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { io } from "socket.io-client";
+import socket from "../websocket"; // Import the shared socket instance
 import Peer from "simple-peer";
 import { v4 as uuidv4 } from "uuid"; // To generate unique Room IDs
 
@@ -8,11 +8,6 @@ import { Button, TextField, IconButton, Tooltip } from "@mui/material";
 import { Users } from "lucide-react";
 import BreakoutRoom from "./BreakoutRoom";
 import "./VideoChat.css"; // Ensure you have this imported for styling
-
-const socket = io("http://localhost:3001", {
-    transports: ["websocket"], // Ensures WebSocket connection
-    withCredentials: true // Prevents CORS issues
-});
 
 const VideoChat = () => {
     const { roomId } = useParams(); // Fetch roomId from URL params
@@ -79,12 +74,27 @@ const VideoChat = () => {
         }
 
         return () => {
-            // Clean up on unmount
+            // Clean up all media streams first
+            if (stream) {
+                stream.getTracks().forEach(track => {
+                    track.stop();
+                });
+            }
+            
+            // Leave room if we're in one
+            if (roomId) {
+                socket.emit("leave-room", roomId);
+            }
+            
+            // Clean up socket listeners
             socket.off("room-participants");
             socket.off("user-connected");
             socket.off("user-disconnected");
             socket.off("receive-signal");
-            socket.disconnect();
+            
+            // Don't disconnect the socket completely, just leave the room
+            // This prevents the socket connection cycle
+            // socket.disconnect();
         };
     }, [roomId, stream]);
 
