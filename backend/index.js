@@ -4,6 +4,7 @@ const cors = require("cors");
 const { connectDB } = require('./db');
 const http = require('http');
 const { Server } = require('socket.io');
+const authLogger = require('./middlewares/authLoggingMiddleware');
 
 // Set environment to production to reduce logs
 process.env.NODE_ENV = 'production';
@@ -17,6 +18,7 @@ const summarizerRouter = require("./routes/summarizer");
 const translatorRouter = require("./routes/translator");
 const mailRouter = require("./routes/mail/mailRoutes");
 const filesystemRouter = require("./routes/filesystem");
+const emailRouter = require("./routes/email");
 
 const app = express();
 const PORT = 3001; 
@@ -398,6 +400,9 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' })); 
 app.use(express.json({ limit: '10mb' }));
 
+// Apply authentication logging middleware
+app.use(authLogger);
+
 // Routes
 app.use("/admin", adminRouter);
 app.use("/user", userRouter);
@@ -408,6 +413,7 @@ app.use("/api", summarizerRouter);
 app.use("/api", translatorRouter);
 app.use("/mail", mailRouter);
 app.use("/filesystem", filesystemRouter);
+app.use("/api/email", emailRouter);
 
 // Create uploads directory if it doesn't exist
 const fs = require('fs');

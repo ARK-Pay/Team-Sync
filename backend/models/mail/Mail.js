@@ -11,7 +11,8 @@ const attachmentSchema = new mongoose.Schema({
 
 // Schema for mail messages
 const mailSchema = new mongoose.Schema({
-  // Use MongoDB's default _id field for Mail documents
+  // Use UUID string as _id for Mail documents
+  _id: { type: String, default: uuidv4 },
   senderId: { 
     type: String,
     required: true,

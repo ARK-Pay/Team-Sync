@@ -2,11 +2,25 @@ const express = require("express");
 const router = express.Router();
 const {User, Project, ProjectUser} = require("../db/index"); 
 const { validateUserSignup, validateUserSignin, validateUserUpdate, validateUserVerify, tokenValidation } = require("../middlewares/UserMiddlewares");
+const { generateToken, generateRefreshToken, saveRefreshToken, verifyRefreshToken, invalidateRefreshToken } = require("../middlewares/authMiddleware");
 const jwt = require("jsonwebtoken");
 const {sendOtpEmail} = require("../utilities/MailUtility")
 require('dotenv').config();
 const bcrypt = require("bcrypt");
 const { tokenValidationAdmin } = require("../middlewares/AdminMiddlewares");
+const rateLimit = require("express-rate-limit");
+
+// Rate limiter for authentication endpoints
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // limit each IP to 5 requests per windowMs
+    message: {
+        success: false,
+        errors: ["Too many login attempts, please try again after 15 minutes."]
+    },
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
 
 // Helper function to generate TeamSync email
 const generateTeamSyncEmail = (email) => {
@@ -14,7 +28,7 @@ const generateTeamSyncEmail = (email) => {
   return `${username}@teamsync.com`;
 };
 
-router.post("/signup", validateUserSignup, async (req, res) => {
+router.post("/signup", authLimiter, validateUserSignup, async (req, res) => {
     try {
         // Destructure the validated data from the request body  
         const { name, email, password } = req.body;
@@ -65,7 +79,7 @@ router.post("/signup", validateUserSignup, async (req, res) => {
     }
 });
 
-router.post("/signin", validateUserSignin,(req,res)=>{
+router.post("/signin", authLimiter, validateUserSignin,(req,res)=>{
     // all checks done create a jwt token using user's email and send it in response  
     const { email } = req.body;
     const user = req.user;
@@ -82,8 +96,23 @@ router.post("/signin", validateUserSignin,(req,res)=>{
         });
     }
     
-    const token = jwt.sign({ email, user_id: user.id }, process.env.JWT_SECRET, {
-        expiresIn: "12h",
+    // Generate access token with shorter expiry (1 hour)
+    const token = generateToken({ email, user_id: user.id });
+    
+    // Generate refresh token with longer expiry (7 days)
+    const refreshToken = generateRefreshToken({ email, user_id: user.id });
+    
+    // Save refresh token to user in database
+    saveRefreshToken(user.id, refreshToken).then(() => {
+        console.log(`Saved refresh token for user: ${user.email}`);
+    }).catch(err => {
+        console.error("Error saving refresh token:", err);
+    });
+    
+    // Update last login time
+    user.last_login = new Date();
+    user.save().catch(err => {
+        console.error("Error updating last login time:", err);
     });
     
     // Make sure to include the profile image in the response
@@ -91,6 +120,7 @@ router.post("/signin", validateUserSignin,(req,res)=>{
         success: true,
         message: "User signed in successfully.",
         token,
+        refreshToken,
         name: user.name,
         email: user.email,
         teamsync_email: user.teamsync_email,
@@ -172,7 +202,7 @@ router.put("/edit-user", validateUserUpdate, async (req, res) => {
 });
 
 //post request to send resetotp to users mail id   
-router.post("/reset",async (req,res)=>{
+router.post("/reset",authLimiter,async (req,res)=>{
     //extract email from req body  
     const {email}=req.body;
     if(!email){
@@ -202,7 +232,7 @@ router.post("/reset",async (req,res)=>{
     });
 })
 
-router.put("/reset",async (req,res)=>{
+router.put("/reset",authLimiter,async (req,res)=>{
     //extract email and otp from req body  
     const {email,resetOtp,password}=req.body;
     //find user with that email  
@@ -244,7 +274,7 @@ router.put("/reset",async (req,res)=>{
     });
 })
 
-router.post("/verify",async (req,res)=>{
+router.post("/verify",authLimiter,async (req,res)=>{
     //extract email from req body
     const {email}=req.body;
     if(!email){
@@ -281,7 +311,7 @@ router.post("/verify",async (req,res)=>{
     
 })
 
-router.put("/verify",validateUserVerify, async (req,res)=>{
+router.put("/verify",authLimiter,validateUserVerify, async (req,res)=>{
     //extract email and otp from req body
     const {email,registerOtp}=req.body;
     //find user with that email
@@ -452,6 +482,65 @@ router.delete("/:user_id",tokenValidationAdmin,async (req,res)=>{
     }
 });
 
+// Refresh token endpoint
+router.post("/refresh-token", authLimiter, async (req, res) => {
+    try {
+        // Get refresh token from request body
+        const refreshToken = req.body.refreshToken;
 
+        if (!refreshToken) {
+            return res.status(400).json({
+                success: false,
+                errors: ["Refresh token is required."],
+            });
+        }
+
+        // Verify refresh token
+        const result = await verifyRefreshToken(refreshToken);
+
+        if (!result.success) {
+            return res.status(401).json({
+                success: false,
+                errors: [result.message],
+            });
+        }
+
+        // Return new access token
+        return res.json({
+            success: true,
+            message: "Access token refreshed successfully.",
+            token: result.accessToken,
+            user: result.user
+        });
+    } catch (error) {
+        console.error("Error refreshing token:", error);
+        return res.status(500).json({
+            success: false,
+            errors: ["Internal server error."],
+        });
+    }
+});
+
+// Logout endpoint
+router.post("/logout", tokenValidation, async (req, res) => {
+    try {
+        // Get user ID from request
+        const userId = req.user.id;
+
+        // Invalidate refresh token
+        await invalidateRefreshToken(userId);
+
+        return res.json({
+            success: true,
+            message: "Logged out successfully.",
+        });
+    } catch (error) {
+        console.error("Error logging out:", error);
+        return res.status(500).json({
+            success: false,
+            errors: ["Internal server error."],
+        });
+    }
+});
 
 module.exports = router;
