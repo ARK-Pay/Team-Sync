@@ -204,6 +204,7 @@ const MailList = ({ emails, selectedEmail, onSelectEmail, loading, error, curren
 
   // Handle move email to folder
   const handleMove = async (e, email, targetFolder) => {
+    console.log('handleMove called', { email, targetFolder });
     e.stopPropagation(); // Prevent email selection
     
     try {
@@ -313,6 +314,22 @@ const MailList = ({ emails, selectedEmail, onSelectEmail, loading, error, curren
           Refresh
         </button>
       </div>
+      
+      {/* Debug: Add main trash button above the email list, only if selectedEmail exists */}
+      {selectedEmail && (
+        <button
+          className="flex items-center px-4 py-2 mb-2 text-sm text-red-600 hover:bg-gray-100 transition-colors"
+          onClick={e => {
+            console.log('Move to Trash button clicked', selectedEmail);
+            handleMove(e, selectedEmail, 'trash');
+          }}
+          disabled={actionLoading[selectedEmail._id]}
+          style={{ border: '1px solid #eee', borderRadius: '4px', background: '#fff' }}
+        >
+          <Trash className="lucide lucide-trash h-4 w-4 mr-2" />
+          Move to Trash
+        </button>
+      )}
       
       {/* Loading state */}
       {loading && (

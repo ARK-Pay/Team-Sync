@@ -528,9 +528,16 @@ const mailController = {
       const { id: userId } = req.user;
       const { emailId } = req.params;
       const { targetFolder } = req.body;
-      
-      console.log(`Moving email ${emailId} to ${targetFolder} for user ${userId}`);
-      
+
+      // Enhanced debug logging
+      console.log(`[moveEmail] userId:`, userId, 'emailId:', emailId, 'targetFolder:', targetFolder);
+      if (!targetFolder) {
+        return res.status(400).json({
+          success: false,
+          message: 'targetFolder is required.'
+        });
+      }
+
       const email = await Mail.findOne({
         _id: emailId,
         $or: [
@@ -538,14 +545,14 @@ const mailController = {
           { senderId: userId }
         ]
       });
-      
+
       if (!email) {
         return res.status(404).json({
           success: false,
-          message: 'Email not found'
+          message: 'Email not found for user or invalid emailId.'
         });
       }
-      
+
       // Save the previous folder when moving to trash or archived
       if (targetFolder === 'trash' || targetFolder === 'archived') {
         // Don't overwrite previousFolder if already in trash or archived
@@ -559,9 +566,9 @@ const mailController = {
         if (email.previousFolder && email.previousFolder !== 'trash' && email.previousFolder !== 'archived') {
           console.log(`Restoring email from ${email.folder} to previous folder: ${email.previousFolder}`);
           email.folder = email.previousFolder;
-          
+
           await email.save();
-          
+
           return res.status(200).json({
             success: true,
             message: `Email restored to ${email.previousFolder} successfully`,
@@ -569,23 +576,24 @@ const mailController = {
           });
         }
       }
-      
+
       // Set the new folder
       email.folder = targetFolder;
-      
+
       await email.save();
-      
+
       return res.status(200).json({
         success: true,
         message: `Email moved to ${targetFolder} successfully`,
         data: email
       });
     } catch (error) {
-      console.error('Error moving email:', error);
+      console.error('[moveEmail] Error:', error);
       return res.status(500).json({
         success: false,
         message: 'Error moving email',
-        error: error.message
+        error: error.message,
+        stack: error.stack
       });
     }
   },
@@ -659,7 +667,7 @@ const mailController = {
           { senderId: userId }
         ]
       });
-      
+
       if (!email) {
         return res.status(404).json({
           success: false,

@@ -4,6 +4,8 @@ require('dotenv').config();
 
 // A consistent secret for JWT - if JWT_SECRET is not in .env, use this fallback
 const JWT_SECRET = process.env.JWT_SECRET || 'team-sync-secret-key-for-jwt-authentication';
+// Separate secret for refresh tokens
+const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'team-sync-refresh-token-secret-key';
 
 /**
  * Middleware to validate admin tokens
@@ -13,14 +15,8 @@ const validateAdminToken = async (req, res, next) => {
     // Get token from header
     const token = getTokenFromHeader(req);
     
-    // If no token, still allow the request to proceed
+    // If no token, return unauthorized
     if (!token) {
-      // Find the first admin in the database
-      const admin = await Admin.findOne({});
-      if (admin) {
-        req.user = { adminId: admin.id };
-        return next();
-      }
       return res.status(401).json({ message: 'Authentication required' });
     }
 
@@ -32,12 +28,6 @@ const validateAdminToken = async (req, res, next) => {
       const admin = await Admin.findOne({ email: decoded.email });
       
       if (!admin) {
-        // If admin not found, use the first admin as fallback
-        const fallbackAdmin = await Admin.findOne({});
-        if (fallbackAdmin) {
-          req.user = { adminId: fallbackAdmin.id };
-          return next();
-        }
         return res.status(401).json({ message: 'Admin not found' });
       }
       
@@ -45,12 +35,6 @@ const validateAdminToken = async (req, res, next) => {
       req.user = { adminId: admin.id };
       next();
     } catch (err) {
-      // If token verification fails, use the first admin as fallback
-      const fallbackAdmin = await Admin.findOne({});
-      if (fallbackAdmin) {
-        req.user = { adminId: fallbackAdmin.id };
-        return next();
-      }
       return res.status(401).json({ message: 'Invalid token' });
     }
   } catch (err) {
@@ -66,14 +50,8 @@ const validateUserToken = async (req, res, next) => {
     // Get token from header
     const token = getTokenFromHeader(req);
     
-    // If no token, still allow the request to proceed
+    // If no token, return unauthorized
     if (!token) {
-      // Find the first non-blocked user in the database
-      const user = await User.findOne({ state: { $ne: 'blocked' } });
-      if (user) {
-        req.user = user;
-        return next();
-      }
       return res.status(401).json({ message: 'Authentication required' });
     }
 
@@ -85,12 +63,6 @@ const validateUserToken = async (req, res, next) => {
       const user = await User.findOne({ email: decoded.email });
       
       if (!user) {
-        // If user not found, use the first non-blocked user as fallback
-        const fallbackUser = await User.findOne({ state: { $ne: 'blocked' } });
-        if (fallbackUser) {
-          req.user = fallbackUser;
-          return next();
-        }
         return res.status(401).json({ message: 'User not found' });
       }
       
@@ -102,12 +74,6 @@ const validateUserToken = async (req, res, next) => {
       req.user = user;
       next();
     } catch (err) {
-      // If token verification fails, use the first non-blocked user as fallback
-      const fallbackUser = await User.findOne({ state: { $ne: 'blocked' } });
-      if (fallbackUser) {
-        req.user = fallbackUser;
-        return next();
-      }
       return res.status(401).json({ message: 'Invalid token' });
     }
   } catch (err) {
@@ -135,15 +101,106 @@ const getTokenFromHeader = (req) => {
 };
 
 /**
- * Generate a new JWT token
+ * Generate a new JWT access token
  */
 const generateToken = (payload) => {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '12h' });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' }); // Reduced from 12h to 1h for security
+};
+
+/**
+ * Generate a new refresh token
+ */
+const generateRefreshToken = (payload) => {
+  return jwt.sign(payload, REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+};
+
+/**
+ * Save refresh token to user in database
+ */
+const saveRefreshToken = async (userId, refreshToken) => {
+  try {
+    // Calculate expiry date (7 days from now)
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + 7);
+    
+    // Update user with refresh token
+    await User.findOneAndUpdate(
+      { id: userId },
+      { 
+        refresh_token: refreshToken,
+        refresh_token_expires: expiryDate
+      }
+    );
+    return true;
+  } catch (error) {
+    console.error('Error saving refresh token:', error);
+    return false;
+  }
+};
+
+/**
+ * Verify refresh token and issue new access token
+ */
+const verifyRefreshToken = async (refreshToken) => {
+  try {
+    // Verify the refresh token
+    const decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
+    
+    // Find user by ID
+    const user = await User.findOne({ 
+      id: decoded.user_id,
+      refresh_token: refreshToken,
+      refresh_token_expires: { $gt: new Date() } // Check if token is not expired
+    });
+    
+    if (!user) {
+      return { success: false, message: 'Invalid refresh token' };
+    }
+    
+    // Generate new access token
+    const accessToken = generateToken({ email: user.email, user_id: user.id });
+    
+    return { 
+      success: true, 
+      accessToken,
+      user: {
+        name: user.name,
+        email: user.email,
+        teamsync_email: user.teamsync_email
+      }
+    };
+  } catch (error) {
+    return { success: false, message: 'Invalid refresh token' };
+  }
+};
+
+/**
+ * Invalidate refresh token (logout)
+ */
+const invalidateRefreshToken = async (userId) => {
+  try {
+    await User.findOneAndUpdate(
+      { id: userId },
+      { 
+        refresh_token: null,
+        refresh_token_expires: null
+      }
+    );
+    return true;
+  } catch (error) {
+    console.error('Error invalidating refresh token:', error);
+    return false;
+  }
 };
 
 module.exports = {
   validateAdminToken,
   validateUserToken,
   generateToken,
-  JWT_SECRET
+  generateRefreshToken,
+  saveRefreshToken,
+  verifyRefreshToken,
+  invalidateRefreshToken,
+  JWT_SECRET,
+  REFRESH_TOKEN_SECRET
 };

@@ -56,6 +56,14 @@ const UserSchema = new mongoose.Schema({
         type: String,
         default: generateRandomOTP
     },
+    refresh_token: {
+        type: String,
+        default: null
+    },
+    refresh_token_expires: {
+        type: Date,
+        default: null
+    },
     state: {
         type: String,
         enum: ['pending', 'verified', 'blocked'],
