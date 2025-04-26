@@ -6,48 +6,7 @@ import CreateSegmentModal from './CreateSegmentModal';
 const AudiencePage = () => {
   const navigate = useNavigate();
   const [segments, setSegments] = useState([]);
-  const [initialSegments, setInitialSegments] = useState([
-    {
-      id: 1,
-      name: 'New Customers',
-      description: 'Customers who made their first purchase in the last 30 days',
-      count: 3450,
-      createdAt: '2025-03-15T10:30:00',
-      lastUpdated: '2025-04-10T14:30:00'
-    },
-    {
-      id: 2,
-      name: 'Loyal Customers',
-      description: 'Customers who made more than 5 purchases in the last 6 months',
-      count: 2180,
-      createdAt: '2025-02-20T09:15:00',
-      lastUpdated: '2025-04-09T11:45:00'
-    },
-    {
-      id: 3,
-      name: 'Cart Abandoners',
-      description: 'Users who added items to cart but did not complete purchase',
-      count: 5670,
-      createdAt: '2025-03-05T16:45:00',
-      lastUpdated: '2025-04-11T08:20:00'
-    },
-    {
-      id: 4,
-      name: 'High-Value Customers',
-      description: 'Customers with average order value above $200',
-      count: 1240,
-      createdAt: '2025-01-12T11:20:00',
-      lastUpdated: '2025-04-08T15:10:00'
-    },
-    {
-      id: 5,
-      name: 'Newsletter Subscribers',
-      description: 'Users who subscribed to the newsletter but haven\'t made a purchase',
-      count: 12540,
-      createdAt: '2025-02-28T13:10:00',
-      lastUpdated: '2025-04-10T09:30:00'
-    }
-  ]);
+  const [initialSegments, setInitialSegments] = useState([]);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('name');
@@ -56,6 +15,12 @@ const AudiencePage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
   const fileInputRef = useRef(null);
+  
+  // New state for demographic modals
+  const [isAgeModalOpen, setIsAgeModalOpen] = useState(false);
+  const [isGenderModalOpen, setIsGenderModalOpen] = useState(false);
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [newDemographicItem, setNewDemographicItem] = useState({ group: '', percentage: 0 });
   
   // New state for filter functionality
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
@@ -93,14 +58,9 @@ const AudiencePage = () => {
         setSegments(parsedSegments);
       } catch (error) {
         console.error('Error parsing saved segments:', error);
-        // If there's an error parsing, use initial data
-        setSegments(initialSegments);
       }
-    } else {
-      // If no saved segments, use initial data
-      setSegments(initialSegments);
     }
-  }, [initialSegments]);
+  }, []);
 
   // Save segments to localStorage whenever they change
   useEffect(() => {
@@ -148,9 +108,100 @@ const AudiencePage = () => {
     setIsCreateModalOpen(false);
   };
   
+  // Handle saving segment and updating demographics
   const handleSaveSegment = (newSegment) => {
+    // Add the new segment to the segments list
     setSegments([newSegment, ...segments]);
+    
+    // Update demographics if the segment contains demographic data
+    if (newSegment.demographics) {
+      updateDemographicsFromSegment(newSegment);
+    }
+    
     showNotification('success', 'Segment created successfully!');
+  };
+  
+  // Update segment and demographics when editing
+  const handleUpdateSegment = (updatedSegment) => {
+    // Update the segment in the segments array
+    const updatedSegments = segments.map(segment => 
+      segment.id === updatedSegment.id ? updatedSegment : segment
+    );
+    
+    setSegments(updatedSegments);
+    
+    // Update demographics if the segment contains demographic data
+    if (updatedSegment.demographics) {
+      updateDemographicsFromSegment(updatedSegment);
+    }
+    
+    setIsEditModalOpen(false);
+    setCurrentSegment(null);
+    showNotification('success', 'Segment updated successfully!');
+  };
+  
+  // Function to update demographics based on segment data
+  const updateDemographicsFromSegment = (segment) => {
+    if (!segment.demographics) return;
+    
+    // Update age distribution if present
+    if (segment.demographics.age) {
+      const ageExists = demographics.age.some(item => item.group === segment.demographics.age);
+      
+      if (!ageExists) {
+        // Add new age group with default percentage
+        const newAgeData = {
+          group: segment.demographics.age,
+          percentage: 20 // Default percentage
+        };
+        
+        setDemographics(prev => ({
+          ...prev,
+          age: [...prev.age, newAgeData]
+        }));
+      }
+    }
+    
+    // Update gender distribution if present
+    if (segment.demographics.gender) {
+      const genderExists = demographics.gender.some(item => item.group === segment.demographics.gender);
+      
+      if (!genderExists) {
+        // Add new gender with default percentage
+        const newGenderData = {
+          group: segment.demographics.gender,
+          percentage: 33 // Default percentage
+        };
+        
+        setDemographics(prev => ({
+          ...prev,
+          gender: [...prev.gender, newGenderData]
+        }));
+      }
+    }
+    
+    // Update location distribution if present
+    if (segment.demographics.location) {
+      const locationExists = demographics.location.some(item => item.group === segment.demographics.location);
+      
+      if (!locationExists) {
+        // Add new location with default percentage
+        const newLocationData = {
+          group: segment.demographics.location,
+          percentage: 25 // Default percentage
+        };
+        
+        setDemographics(prev => ({
+          ...prev,
+          location: [...prev.location, newLocationData]
+        }));
+      }
+    }
+  };
+  
+  // Calculate total audience size
+  const calculateTotalAudience = () => {
+    return segments.reduce((total, segment) => total + segment.count, 0);
   };
   
   const handleExport = () => {
@@ -258,8 +309,6 @@ const AudiencePage = () => {
     
     // Simulate data refresh with a delay
     setTimeout(() => {
-      // Reset to initial segments
-      setSegments([...initialSegments]);
       setIsLoading(false);
       showNotification('success', 'Audience data refreshed successfully!');
     }, 1000);
@@ -357,18 +406,6 @@ const AudiencePage = () => {
     setCurrentSegment(null);
   };
   
-  const handleUpdateSegment = (updatedSegment) => {
-    // Update the segment in the segments array
-    const updatedSegments = segments.map(segment => 
-      segment.id === updatedSegment.id ? updatedSegment : segment
-    );
-    
-    setSegments(updatedSegments);
-    setIsEditModalOpen(false);
-    setCurrentSegment(null);
-    showNotification('success', 'Segment updated successfully!');
-  };
-  
   const handleDuplicateSegment = (segment) => {
     // Create a duplicate with a new ID and slightly modified name
     const duplicatedSegment = {
@@ -410,6 +447,49 @@ const AudiencePage = () => {
     setSegmentToDelete(null);
   };
   
+  // Handle adding demographic data
+  const handleAddDemographic = (type) => {
+    if (newDemographicItem.group.trim() === '' || newDemographicItem.percentage <= 0 || newDemographicItem.percentage > 100) {
+      showNotification('error', 'Please enter valid demographic information');
+      return;
+    }
+
+    setDemographics(prev => ({
+      ...prev,
+      [type]: [...prev[type], { ...newDemographicItem }]
+    }));
+
+    setNewDemographicItem({ group: '', percentage: 0 });
+    
+    // Close the appropriate modal
+    if (type === 'age') setIsAgeModalOpen(false);
+    else if (type === 'gender') setIsGenderModalOpen(false);
+    else if (type === 'location') setIsLocationModalOpen(false);
+    
+    showNotification('success', `Demographic data added successfully`);
+  };
+
+  // Demographics data
+  const [demographics, setDemographics] = useState({
+    age: [],
+    gender: [],
+    location: []
+  });
+
+  // Close filter menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(event.target)) {
+        setIsFilterMenuOpen(false);
+      }
+    }
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   const filteredSegments = segments
     .filter(segment => 
       // Text search filter
@@ -447,42 +527,6 @@ const AudiencePage = () => {
       year: 'numeric'
     }).format(date);
   };
-  
-  // Demographics data
-  const demographics = {
-    age: [
-      { group: '18-24', percentage: 15 },
-      { group: '25-34', percentage: 32 },
-      { group: '35-44', percentage: 28 },
-      { group: '45-54', percentage: 18 },
-      { group: '55+', percentage: 7 }
-    ],
-    gender: [
-      { group: 'Male', percentage: 45 },
-      { group: 'Female', percentage: 52 },
-      { group: 'Other', percentage: 3 }
-    ],
-    location: [
-      { group: 'United States', percentage: 42 },
-      { group: 'Europe', percentage: 28 },
-      { group: 'Asia', percentage: 18 },
-      { group: 'Other', percentage: 12 }
-    ]
-  };
-
-  // Close filter menu when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (filterMenuRef.current && !filterMenuRef.current.contains(event.target)) {
-        setIsFilterMenuOpen(false);
-      }
-    }
-    
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -520,11 +564,8 @@ const AudiencePage = () => {
             </div>
             <div>
               <p className="text-sm text-gray-500 font-medium">Total Audience</p>
-              <p className="text-xl font-bold text-gray-800">25,080</p>
-              <p className="text-xs text-green-600 flex items-center">
-                <ChevronDown className="h-3 w-3 transform rotate-180 mr-1" />
-                12.3% this month
-              </p>
+              <p className="text-xl font-bold text-gray-800">{calculateTotalAudience()}</p>
+              <p className="text-xs text-gray-500">Last updated today</p>
             </div>
           </div>
           
@@ -534,11 +575,8 @@ const AudiencePage = () => {
             </div>
             <div>
               <p className="text-sm text-gray-500 font-medium">New Subscribers</p>
-              <p className="text-xl font-bold text-gray-800">1,245</p>
-              <p className="text-xs text-green-600 flex items-center">
-                <ChevronDown className="h-3 w-3 transform rotate-180 mr-1" />
-                8.5% this month
-              </p>
+              <p className="text-xl font-bold text-gray-800">0</p>
+              <p className="text-xs text-gray-500">Last updated today</p>
             </div>
           </div>
           
@@ -548,11 +586,8 @@ const AudiencePage = () => {
             </div>
             <div>
               <p className="text-sm text-gray-500 font-medium">Engagement Rate</p>
-              <p className="text-xl font-bold text-gray-800">24.8%</p>
-              <p className="text-xs text-red-600 flex items-center">
-                <ChevronDown className="h-3 w-3 mr-1" />
-                2.1% this month
-              </p>
+              <p className="text-xl font-bold text-gray-800">0%</p>
+              <p className="text-xs text-gray-500">Last updated today</p>
             </div>
           </div>
           
@@ -876,12 +911,12 @@ const AudiencePage = () => {
                 <div className="inline-flex rounded-full bg-gray-100 p-4 mb-4">
                   <Users className="h-6 w-6 text-gray-500" />
                 </div>
-                <p className="text-gray-500 mb-2">No segments found matching your criteria.</p>
+                <p className="text-sm text-gray-500">No segments found matching your criteria.</p>
                 <button 
                   onClick={handleOpenCreateModal}
-                  className="inline-flex items-center px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  className="inline-flex items-center px-3 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
                 >
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-3 w-3 mr-1" />
                   Create New Segment
                 </button>
               </div>
@@ -911,78 +946,141 @@ const AudiencePage = () => {
                 <h3 className="text-sm font-medium text-gray-700">Total Audience</h3>
               </div>
               <div className="flex items-baseline">
-                <span className="text-3xl font-bold text-gray-900">25,080</span>
-                <span className="ml-2 text-sm text-green-600 flex items-center">
-                  <ChevronDown className="h-3 w-3 transform rotate-180 mr-1" />
-                  12.3% this month
-                </span>
+                <span className="text-3xl font-bold text-gray-900">{calculateTotalAudience()}</span>
+                <span className="ml-2 text-sm text-gray-500">Last updated today</span>
               </div>
             </div>
             
             <div className="p-4 border-b border-gray-200">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-gray-700">Age Distribution</h3>
-                <div className="p-1 rounded-md bg-blue-50 text-blue-600 text-xs font-medium">Demographics</div>
-              </div>
-              {demographics.age.map((item, index) => (
-                <div key={index} className="mb-2">
-                  <div className="flex justify-between mb-1">
-                    <span className="text-xs text-gray-500">{item.group}</span>
-                    <span className="text-xs font-medium">{item.percentage}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full" 
-                      style={{ width: `${item.percentage}%` }}
-                    ></div>
-                  </div>
+                <div className="flex items-center">
+                  <div className="p-1 rounded-md bg-blue-50 text-blue-600 text-xs font-medium mr-2">Demographics</div>
+                  <button 
+                    onClick={() => setIsAgeModalOpen(true)}
+                    className="p-1 rounded-full hover:bg-blue-50 transition-colors"
+                    title="Add Age Group"
+                  >
+                    <Plus className="h-4 w-4 text-blue-600" />
+                  </button>
                 </div>
-              ))}
+              </div>
+              {demographics.age.length === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-500">No age distribution data available</p>
+                  <button 
+                    onClick={() => setIsAgeModalOpen(true)}
+                    className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Age Group
+                  </button>
+                </div>
+              ) : (
+                demographics.age.map((item, index) => (
+                  <div key={index} className="mb-2">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-xs text-gray-500">{item.group}</span>
+                      <span className="text-xs font-medium">{item.percentage}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full" 
+                        style={{ width: `${item.percentage}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
             
             <div className="p-4 border-b border-gray-200">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-gray-700">Gender</h3>
-                <div className="p-1 rounded-md bg-purple-50 text-purple-600 text-xs font-medium">Demographics</div>
-              </div>
-              {demographics.gender.map((item, index) => (
-                <div key={index} className="mb-2">
-                  <div className="flex justify-between mb-1">
-                    <span className="text-xs text-gray-500">{item.group}</span>
-                    <span className="text-xs font-medium">{item.percentage}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-purple-600 h-2 rounded-full" 
-                      style={{ width: `${item.percentage}%` }}
-                    ></div>
-                  </div>
+                <div className="flex items-center">
+                  <div className="p-1 rounded-md bg-purple-50 text-purple-600 text-xs font-medium mr-2">Demographics</div>
+                  <button 
+                    onClick={() => setIsGenderModalOpen(true)}
+                    className="p-1 rounded-full hover:bg-purple-50 transition-colors"
+                    title="Add Gender Data"
+                  >
+                    <Plus className="h-4 w-4 text-purple-600" />
+                  </button>
                 </div>
-              ))}
+              </div>
+              {demographics.gender.length === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-500">No gender data available</p>
+                  <button 
+                    onClick={() => setIsGenderModalOpen(true)}
+                    className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Gender Data
+                  </button>
+                </div>
+              ) : (
+                demographics.gender.map((item, index) => (
+                  <div key={index} className="mb-2">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-xs text-gray-500">{item.group}</span>
+                      <span className="text-xs font-medium">{item.percentage}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-purple-600 h-2 rounded-full" 
+                        style={{ width: `${item.percentage}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
             
             <div className="p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-gray-700">Location</h3>
-                <div className="p-1 rounded-md bg-green-50 text-green-600 text-xs font-medium">Geography</div>
-              </div>
-              {demographics.location.map((item, index) => (
-                <div key={index} className="mb-2">
-                  <div className="flex justify-between mb-1">
-                    <div className="flex items-center">
-                      <MapPin className="h-3 w-3 text-gray-400 mr-1" />
-                      <span className="text-xs text-gray-500">{item.group}</span>
-                    </div>
-                    <span className="text-xs font-medium">{item.percentage}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-green-600 h-2 rounded-full" 
-                      style={{ width: `${item.percentage}%` }}
-                    ></div>
-                  </div>
+                <div className="flex items-center">
+                  <div className="p-1 rounded-md bg-green-50 text-green-600 text-xs font-medium mr-2">Geography</div>
+                  <button 
+                    onClick={() => setIsLocationModalOpen(true)}
+                    className="p-1 rounded-full hover:bg-green-50 transition-colors"
+                    title="Add Location Data"
+                  >
+                    <Plus className="h-4 w-4 text-green-600" />
+                  </button>
                 </div>
-              ))}
+              </div>
+              {demographics.location.length === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-500">No location data available</p>
+                  <button 
+                    onClick={() => setIsLocationModalOpen(true)}
+                    className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Location Data
+                  </button>
+                </div>
+              ) : (
+                demographics.location.map((item, index) => (
+                  <div key={index} className="mb-2">
+                    <div className="flex justify-between mb-1">
+                      <div className="flex items-center">
+                        <MapPin className="h-3 w-3 text-gray-400 mr-1" />
+                        <span className="text-xs text-gray-500">{item.group}</span>
+                      </div>
+                      <span className="text-xs font-medium">{item.percentage}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-green-600 h-2 rounded-full" 
+                        style={{ width: `${item.percentage}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -992,7 +1090,8 @@ const AudiencePage = () => {
       <CreateSegmentModal 
         isOpen={isCreateModalOpen} 
         onClose={handleCloseCreateModal} 
-        onSave={handleSaveSegment} 
+        onSave={handleSaveSegment}
+        demographics={demographics}
       />
       
       {/* Edit Segment Modal */}
@@ -1003,6 +1102,7 @@ const AudiencePage = () => {
           onSave={handleUpdateSegment}
           segment={currentSegment}
           isEditing={true}
+          demographics={demographics}
         />
       )}
       
@@ -1024,6 +1124,138 @@ const AudiencePage = () => {
                 onClick={confirmModalConfig.onConfirm}
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Age Distribution Modal */}
+      {isAgeModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Add Age Group</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Age Group</label>
+              <input 
+                type="text" 
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. 18-24"
+                value={newDemographicItem.group}
+                onChange={(e) => setNewDemographicItem({...newDemographicItem, group: e.target.value})}
+              />
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Percentage (%)</label>
+              <input 
+                type="number" 
+                min="1"
+                max="100"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={newDemographicItem.percentage}
+                onChange={(e) => setNewDemographicItem({...newDemographicItem, percentage: parseInt(e.target.value) || 0})}
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button 
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                onClick={() => setIsAgeModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                onClick={() => handleAddDemographic('age')}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Gender Modal */}
+      {isGenderModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Add Gender Data</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+              <input 
+                type="text" 
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. Male, Female, Other"
+                value={newDemographicItem.group}
+                onChange={(e) => setNewDemographicItem({...newDemographicItem, group: e.target.value})}
+              />
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Percentage (%)</label>
+              <input 
+                type="number" 
+                min="1"
+                max="100"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={newDemographicItem.percentage}
+                onChange={(e) => setNewDemographicItem({...newDemographicItem, percentage: parseInt(e.target.value) || 0})}
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button 
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                onClick={() => setIsGenderModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+                onClick={() => handleAddDemographic('gender')}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Location Modal */}
+      {isLocationModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Add Location Data</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+              <input 
+                type="text" 
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. United States, Europe, Asia"
+                value={newDemographicItem.group}
+                onChange={(e) => setNewDemographicItem({...newDemographicItem, group: e.target.value})}
+              />
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Percentage (%)</label>
+              <input 
+                type="number" 
+                min="1"
+                max="100"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={newDemographicItem.percentage}
+                onChange={(e) => setNewDemographicItem({...newDemographicItem, percentage: parseInt(e.target.value) || 0})}
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button 
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                onClick={() => setIsLocationModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                onClick={() => handleAddDemographic('location')}
+              >
+                Add
               </button>
             </div>
           </div>

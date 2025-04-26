@@ -6,68 +6,7 @@ import CreateCampaignModal from './CreateCampaignModal';
 const CampaignPage = () => {
   const navigate = useNavigate();
   const [campaigns, setCampaigns] = useState([]);
-  const [initialCampaigns, setInitialCampaigns] = useState([
-    {
-      id: 1,
-      name: 'Spring Product Launch',
-      status: 'Active',
-      type: 'Email',
-      audience: 'New Customers',
-      sent: 12500,
-      opened: 5680,
-      clicked: 2340,
-      lastUpdated: '2025-04-10T14:30:00',
-      icon: <Mail className="h-4 w-4" />
-    },
-    {
-      id: 2,
-      name: 'Social Media Promotion',
-      status: 'Scheduled',
-      type: 'Social',
-      audience: 'All Subscribers',
-      sent: 0,
-      opened: 0,
-      clicked: 0,
-      lastUpdated: '2025-04-11T09:15:00',
-      icon: <Instagram className="h-4 w-4" />
-    },
-    {
-      id: 3,
-      name: 'Customer Feedback Survey',
-      status: 'Draft',
-      type: 'Email',
-      audience: 'Existing Customers',
-      sent: 0,
-      opened: 0,
-      clicked: 0,
-      lastUpdated: '2025-04-09T16:45:00',
-      icon: <MessageSquare className="h-4 w-4" />
-    },
-    {
-      id: 4,
-      name: 'Facebook Ad Campaign',
-      status: 'Active',
-      type: 'Social',
-      audience: 'Targeted Segment',
-      sent: 45000,
-      opened: 12300,
-      clicked: 3200,
-      lastUpdated: '2025-04-08T11:20:00',
-      icon: <Facebook className="h-4 w-4" />
-    },
-    {
-      id: 5,
-      name: 'Product Update Newsletter',
-      status: 'Completed',
-      type: 'Email',
-      audience: 'All Subscribers',
-      sent: 28750,
-      opened: 18200,
-      clicked: 9340,
-      lastUpdated: '2025-04-05T13:10:00',
-      icon: <Mail className="h-4 w-4" />
-    }
-  ]);
+  const [initialCampaigns, setInitialCampaigns] = useState([]);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
@@ -78,6 +17,7 @@ const CampaignPage = () => {
   const [actionDropdownId, setActionDropdownId] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [audienceSize, setAudienceSize] = useState(0);
   
   // Load campaigns from localStorage on component mount
   useEffect(() => {
@@ -90,11 +30,26 @@ const CampaignPage = () => {
         icon: getIconForType(campaign.type) // Recreate the icon component
       }));
       setCampaigns(campaignsWithIcons);
-    } else {
-      // If no saved campaigns, use initial data
-      setCampaigns(initialCampaigns);
     }
+    
+    // Load audience segments to get total audience size
+    loadAudienceSize();
   }, []);
+  
+  // Load audience size from localStorage
+  const loadAudienceSize = () => {
+    try {
+      const savedSegments = localStorage.getItem('marketingSegments');
+      if (savedSegments) {
+        const segments = JSON.parse(savedSegments);
+        const totalAudience = segments.reduce((total, segment) => total + (segment.count || 0), 0);
+        setAudienceSize(totalAudience);
+      }
+    } catch (error) {
+      console.error('Error loading audience size:', error);
+      setAudienceSize(0);
+    }
+  };
 
   // Save campaigns to localStorage whenever they change
   useEffect(() => {
@@ -104,6 +59,16 @@ const CampaignPage = () => {
       localStorage.setItem('marketingCampaigns', JSON.stringify(serializableCampaigns));
     }
   }, [campaigns]);
+  
+  // Refresh audience size when needed
+  useEffect(() => {
+    // Set up interval to check for audience size updates
+    const intervalId = setInterval(() => {
+      loadAudienceSize();
+    }, 30000); // Check every 30 seconds
+    
+    return () => clearInterval(intervalId);
+  }, []);
   
   // Function to get icon component based on campaign type
   const getIconForType = (type) => {
@@ -137,6 +102,9 @@ const CampaignPage = () => {
     setCurrentCampaign(null);
     setIsCreateModalOpen(true);
     setIsEditModalOpen(false);
+    
+    // Refresh audience size when creating a new campaign
+    loadAudienceSize();
   };
   
   const handleCloseCreateModal = () => {
@@ -156,6 +124,9 @@ const CampaignPage = () => {
       setCampaigns([newCampaign, ...campaigns]);
       showNotification('success', 'Campaign created successfully!');
     }
+    
+    // Refresh audience size after campaign changes
+    loadAudienceSize();
   };
   
   const handleEditCampaign = (campaign) => {
@@ -163,6 +134,9 @@ const CampaignPage = () => {
     setIsEditModalOpen(true);
     setIsCreateModalOpen(true);
     setActionDropdownId(null);
+    
+    // Refresh audience size when editing a campaign
+    loadAudienceSize();
   };
   
   const handleDuplicateCampaign = (campaign) => {
@@ -193,28 +167,36 @@ const CampaignPage = () => {
   const refreshData = () => {
     setIsRefreshing(true);
     
+    // Refresh audience size
+    loadAudienceSize();
+    
     // Simulate data refresh
     setTimeout(() => {
       setIsRefreshing(false);
       showNotification('success', 'Campaign data refreshed successfully!');
     }, 1500);
   };
-
+  
   const handleExport = (format) => {
     // Simulate export process
     showNotification('success', `Campaigns exported as ${format.toUpperCase()} successfully!`);
-    setShowExportDropdown(false);
   };
   
   const showNotification = (type, message) => {
     setNotification({ type, message });
     
-    // Auto-dismiss after 5 seconds
+    // Clear notification after 3 seconds
     setTimeout(() => {
       setNotification(null);
-    }, 5000);
+    }, 3000);
   };
   
+  // Format audience size with commas for thousands
+  const formatNumber = (num) => {
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  };
+
+  // Status color functions
   const getStatusColor = (status) => {
     switch(status) {
       case 'Active': return 'bg-green-100 text-green-800';
@@ -294,10 +276,7 @@ const CampaignPage = () => {
             <div>
               <p className="text-sm text-gray-500 font-medium">Active Campaigns</p>
               <p className="text-xl font-bold text-gray-800">{campaigns.filter(c => c.status === 'Active').length}</p>
-              <p className="text-xs text-green-600 flex items-center">
-                <ChevronDown className="h-3 w-3 transform rotate-180 mr-1" />
-                12.5% this month
-              </p>
+              <p className="text-xs text-gray-500">Last updated today</p>
             </div>
           </div>
           
@@ -307,8 +286,8 @@ const CampaignPage = () => {
             </div>
             <div>
               <p className="text-sm text-gray-500 font-medium">Total Audience</p>
-              <p className="text-xl font-bold text-gray-800">25,080</p>
-              <p className="text-xs text-gray-500">Across all campaigns</p>
+              <p className="text-xl font-bold text-gray-800">{formatNumber(audienceSize)}</p>
+              <p className="text-xs text-gray-500">Across all segments</p>
             </div>
           </div>
           
@@ -318,11 +297,8 @@ const CampaignPage = () => {
             </div>
             <div>
               <p className="text-sm text-gray-500 font-medium">Avg. Open Rate</p>
-              <p className="text-xl font-bold text-gray-800">24.8%</p>
-              <p className="text-xs text-green-600 flex items-center">
-                <ChevronDown className="h-3 w-3 transform rotate-180 mr-1" />
-                3.2% this month
-              </p>
+              <p className="text-xl font-bold text-gray-800">0%</p>
+              <p className="text-xs text-gray-500">Based on active campaigns</p>
             </div>
           </div>
         </div>

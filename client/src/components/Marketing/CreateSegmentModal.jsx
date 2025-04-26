@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { X, Users, Filter, Check } from 'lucide-react';
+import { X, Users, Filter, Check, UserRound, MapPin } from 'lucide-react';
 
-const CreateSegmentModal = ({ isOpen, onClose, onSave, segment = null, isEditing = false }) => {
+const CreateSegmentModal = ({ isOpen, onClose, onSave, segment = null, isEditing = false, demographics = null }) => {
   const [segmentData, setSegmentData] = useState({
     name: '',
     description: '',
     conditions: [
       { field: 'purchase_count', operator: 'greater_than', value: '' }
-    ]
+    ],
+    demographics: {
+      age: null,
+      gender: null,
+      location: null
+    }
   });
   
   const [errors, setErrors] = useState({});
@@ -24,6 +29,11 @@ const CreateSegmentModal = ({ isOpen, onClose, onSave, segment = null, isEditing
         name: segment.name || '',
         description: segment.description || '',
         conditions,
+        demographics: segment.demographics || {
+          age: null,
+          gender: null,
+          location: null
+        },
         // Preserve other properties for updating
         id: segment.id,
         count: segment.count,
@@ -58,6 +68,16 @@ const CreateSegmentModal = ({ isOpen, onClose, onSave, segment = null, isEditing
     setSegmentData({
       ...segmentData,
       conditions: updatedConditions
+    });
+  };
+  
+  const handleDemographicChange = (type, value) => {
+    setSegmentData({
+      ...segmentData,
+      demographics: {
+        ...segmentData.demographics,
+        [type]: value
+      }
     });
   };
   
@@ -126,7 +146,9 @@ const CreateSegmentModal = ({ isOpen, onClose, onSave, segment = null, isEditing
           description: segmentData.description,
           count: estimatedSize,
           createdAt: new Date().toISOString(),
-          lastUpdated: new Date().toISOString()
+          lastUpdated: new Date().toISOString(),
+          conditions: segmentData.conditions,
+          demographics: segmentData.demographics
         };
         
         onSave(newSegment);
@@ -256,6 +278,68 @@ const CreateSegmentModal = ({ isOpen, onClose, onSave, segment = null, isEditing
               {errors.conditions && (
                 <p className="mt-1 text-sm text-red-600">{errors.conditions}</p>
               )}
+            </div>
+            
+            {/* Demographics Section */}
+            <div className="border-t border-gray-200 pt-6">
+              <h3 className="text-sm font-medium text-gray-700 mb-4">Audience Demographics</h3>
+              
+              {/* Age Distribution */}
+              <div className="mb-4">
+                <div className="flex items-center mb-2">
+                  <UserRound className="h-4 w-4 text-blue-600 mr-2" />
+                  <label className="block text-sm font-medium text-gray-700">Age Group</label>
+                </div>
+                <select
+                  value={segmentData.demographics.age || ''}
+                  onChange={(e) => handleDemographicChange('age', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select age group</option>
+                  <option value="18-24">18-24</option>
+                  <option value="25-34">25-34</option>
+                  <option value="35-44">35-44</option>
+                  <option value="45-54">45-54</option>
+                  <option value="55+">55+</option>
+                </select>
+              </div>
+              
+              {/* Gender */}
+              <div className="mb-4">
+                <div className="flex items-center mb-2">
+                  <Users className="h-4 w-4 text-purple-600 mr-2" />
+                  <label className="block text-sm font-medium text-gray-700">Gender</label>
+                </div>
+                <select
+                  value={segmentData.demographics.gender || ''}
+                  onChange={(e) => handleDemographicChange('gender', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              
+              {/* Location */}
+              <div className="mb-4">
+                <div className="flex items-center mb-2">
+                  <MapPin className="h-4 w-4 text-green-600 mr-2" />
+                  <label className="block text-sm font-medium text-gray-700">Location</label>
+                </div>
+                <select
+                  value={segmentData.demographics.location || ''}
+                  onChange={(e) => handleDemographicChange('location', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select location</option>
+                  <option value="United States">United States</option>
+                  <option value="Europe">Europe</option>
+                  <option value="Asia">Asia</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
             </div>
             
             {/* Preview Section */}
