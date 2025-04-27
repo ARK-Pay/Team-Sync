@@ -93,6 +93,27 @@ const AddTaskModal = ({ isOpen, onClose, initialDate = '', onTaskCreated }) => {
     }
   };
 
+  // Fetch project users to assign to the task
+  const fetchProjectUsers = async (projectId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(
+        `http://localhost:3001/project/get-all-users/${projectId}`,
+        {
+          headers: { authorization: token }
+        }
+      );
+      
+      if (response.data && Array.isArray(response.data)) {
+        return response.data.map(user => user.id || user.email);
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching project users:', error);
+      return [];
+    }
+  };
+
   // Validate form inputs
   const validateForm = () => {
     const formErrors = {};
@@ -115,6 +136,8 @@ const AddTaskModal = ({ isOpen, onClose, initialDate = '', onTaskCreated }) => {
   // Submits the form data to create a new task
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Form validation logic
     const formErrors = validateForm();
     if (Object.keys(formErrors).length > 0) {
       setErrors(formErrors);
@@ -148,22 +171,31 @@ const AddTaskModal = ({ isOpen, onClose, initialDate = '', onTaskCreated }) => {
       );
 
       if (response.status === 201) {
-        // Step 2: If task creation is successful, assign the creator to the task
+        const taskId = response.data.task.id;
+        
+        // Step 2: Fetch all users from the project
+        const projectUsers = await fetchProjectUsers(selectedProject);
+        console.log('Project users to assign:', projectUsers);
+        
+        // Step 3: Make sure creator is included in the assignees list
+        const assigneeIds = [...new Set([creatorId, ...projectUsers])];
+        console.log('All assignees for task:', assigneeIds);
+        
+        // Step 4: Assign all project users to the task
         try {
-          const taskId = response.data.task.id;
           await axios.post(
             `http://localhost:3001/task/assign`,
             {
               task_id: taskId,
-              assignee_ids: [creatorId]
+              assignee_ids: assigneeIds
             },
             {
               headers: { authorization: token },
             }
           );
-          console.log('Creator assigned to task successfully');
+          console.log('All project users assigned to task successfully');
         } catch (assignError) {
-          console.error('Error assigning creator to task:', assignError);
+          console.error('Error assigning users to task:', assignError);
           // Continue even if assignment fails
         }
 

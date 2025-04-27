@@ -73,8 +73,32 @@ const AssignedTasks = ({ projectId }) => {
         return;
       }
       
+      // Process tasks to ensure assignees are properly populated
+      const processedTasks = await Promise.all(response.data.map(async (task) => {
+        try {
+          // For each task, fetch its assigned users to ensure up-to-date information
+          const assigneesResponse = await axios.get(
+            `http://localhost:3001/task/${task.id}/assigned-users`,
+            {
+              headers: {
+                Authorization: token
+              }
+            }
+          );
+          
+          // Update the task with the latest assignees information
+          return {
+            ...task,
+            assignees: assigneesResponse.data || task.assignees || []
+          };
+        } catch (error) {
+          console.error(`Error fetching assignees for task ${task.id}:`, error);
+          return task;
+        }
+      }));
+      
       // Sort tasks by status, priority
-      const sortedTasks = response.data.sort((a, b) => {
+      const sortedTasks = processedTasks.sort((a, b) => {
         // First sort by status (To Do first, then In Progress, then Completed)
         const statusCompare = a.status.localeCompare(b.status);
         if (statusCompare !== 0) return statusCompare;
@@ -83,7 +107,7 @@ const AssignedTasks = ({ projectId }) => {
         return b.priority.localeCompare(a.priority);
       });
       
-      console.log(`Found ${sortedTasks.length} tasks`);
+      console.log(`Found ${sortedTasks.length} tasks with updated assignee information`);
       
       setTasks(sortedTasks);
       setFilteredTasks(sortedTasks);
@@ -234,6 +258,22 @@ const AssignedTasks = ({ projectId }) => {
     return diffDays <= 3;
   };
 
+  // Simplified status cell renderer without dropdown functionality - remove the arrow icon completely
+  const renderStatusCell = (task) => {
+    return (
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center">
+          {getStatusIcon(task.status)}
+          <div className="ml-2">
+            <span className={`px-2 py-1 rounded-md text-sm ${getStatusClass(task.status)}`}>
+              {getStatusText(task.status)}
+            </span>
+          </div>
+        </div>
+      </td>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -293,32 +333,92 @@ const AssignedTasks = ({ projectId }) => {
           </div>
           
           <div className="flex flex-wrap gap-2">
-            <div className="relative min-w-[150px]">
-              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+            {/* Status filter buttons instead of dropdown */}
+            <div className="flex gap-1">
+              <button
+                onClick={() => setStatusFilter('all')}
+                className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                  statusFilter === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
               >
-                <option value="all">All Status</option>
-                <option value="0">To Do</option>
-                <option value="1">In Progress</option>
-                <option value="2">Completed</option>
-              </select>
+                All Status
+              </button>
+              <button
+                onClick={() => setStatusFilter('0')}
+                className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                  statusFilter === '0'
+                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                To Do
+              </button>
+              <button
+                onClick={() => setStatusFilter('1')}
+                className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                  statusFilter === '1'
+                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                In Progress
+              </button>
+              <button
+                onClick={() => setStatusFilter('2')}
+                className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                  statusFilter === '2'
+                    ? 'bg-green-100 text-green-800 border border-green-200'
+                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Completed
+              </button>
             </div>
             
-            <div className="relative min-w-[150px]">
-              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <select
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+            {/* Priority filter as buttons too */}
+            <div className="flex gap-1">
+              <button
+                onClick={() => setPriorityFilter('all')}
+                className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                  priorityFilter === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
               >
-                <option value="all">All Priority</option>
-                <option value="0">Low</option>
-                <option value="1">Medium</option>
-                <option value="2">High</option>
-              </select>
+                All Priority
+              </button>
+              <button
+                onClick={() => setPriorityFilter('0')}
+                className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                  priorityFilter === '0'
+                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Low
+              </button>
+              <button
+                onClick={() => setPriorityFilter('1')}
+                className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                  priorityFilter === '1'
+                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Medium
+              </button>
+              <button
+                onClick={() => setPriorityFilter('2')}
+                className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                  priorityFilter === '2'
+                    ? 'bg-red-100 text-red-800 border border-red-200'
+                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                High
+              </button>
             </div>
           </div>
         </div>
@@ -329,7 +429,7 @@ const AssignedTasks = ({ projectId }) => {
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
-              <tr>
+              <tr className="border-b bg-gray-50">
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Task
                 </th>
@@ -359,54 +459,10 @@ const AssignedTasks = ({ projectId }) => {
                       <div className="text-sm text-gray-500 truncate max-w-xs">{task.description}</div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="relative group">
-                      <div className="flex items-center cursor-pointer">
-                        {getStatusIcon(task.status)}
-                        <div className="ml-2 flex items-center">
-                          <span className={`px-2 py-1 rounded-md text-sm ${getStatusClass(task.status)}`}>
-                            {getStatusText(task.status)}
-                          </span>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
-                      </div>
-                      
-                      {/* Dropdown menu */}
-                      <div className="absolute z-10 mt-1 w-40 bg-white rounded-md shadow-lg hidden group-hover:block">
-                        <div className="py-1">
-                          <button 
-                            onClick={() => handleStatusChange(task.id, "0")}
-                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${task.status === "0" ? "bg-gray-100" : ""}`}
-                          >
-                            <div className="flex items-center">
-                              <AlertTriangle className="w-4 h-4 text-yellow-500 mr-2" />
-                              <span>To Do</span>
-                            </div>
-                          </button>
-                          <button 
-                            onClick={() => handleStatusChange(task.id, "1")}
-                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${task.status === "1" ? "bg-gray-100" : ""}`}
-                          >
-                            <div className="flex items-center">
-                              <Clock className="w-4 h-4 text-blue-500 mr-2" />
-                              <span>In Progress</span>
-                            </div>
-                          </button>
-                          <button 
-                            onClick={() => handleStatusChange(task.id, "2")}
-                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${task.status === "2" ? "bg-gray-100" : ""}`}
-                          >
-                            <div className="flex items-center">
-                              <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
-                              <span>Completed</span>
-                            </div>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </td>
+                  
+                  {/* Use the simplified status cell renderer */}
+                  {renderStatusCell(task)}
+                  
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getPriorityClass(task.priority)}`}>
                       {getPriorityText(task.priority)}

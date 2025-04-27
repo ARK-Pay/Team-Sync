@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./index.css"; // Import Tailwind directives first
 import "./App.css"; // Import custom styles second
 import Home from "./pages/Home/Home";
@@ -24,6 +24,15 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import VideoCallJoin from "./components/VideoCallJoin"; // New Component for joining a call
 import VideoConference from './components/VideoConference'; // Import from the components folder
 import { FigmaDashboard, FigmaEditor, FigmaViewer } from './components/Figma'; // Import Figma components
+
+// Document summarizer redirect component
+const DocumentSummarizerRedirect = () => {
+  useEffect(() => {
+    window.location.href = "http://localhost:8501";
+  }, []);
+  
+  return <div className="loading-screen">Redirecting to Document Summarizer...</div>;
+};
 
 // Protected route component
 const ProtectedRoute = ({ children, requireAdmin }) => {
@@ -165,6 +174,14 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <AudiencePage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/document-summarizer" 
+              element={
+                <ProtectedRoute>
+                  <DocumentSummarizerRedirect />
                 </ProtectedRoute>
               } 
             />

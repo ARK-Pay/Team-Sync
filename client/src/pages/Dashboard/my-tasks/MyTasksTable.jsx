@@ -81,23 +81,18 @@ const DeleteModal = ({ isOpen, onClose, onConfirm, taskTitle }) => {
   );
 };
 // Modal for editing task details
-const EditModal = ({ isOpen, onClose, task, onSave, type }) => {
+const EditModal = ({ isOpen, onClose, task, onSave }) => {
   const [editedTask, setEditedTask] = useState({ ...task });
   const [errors, setErrors] = useState({});
   const [isFormChanged, setIsFormChanged] = useState(false);
   const [projects, setProjects] = useState([]);
   const [isNewTask, setIsNewTask] = useState(false);
-  const [isCreatedTask, setIsCreatedTask] = useState(false);
 
   // Update the modal form when the task data changes
   useEffect(() => {
     if (task) {
       setEditedTask({ ...task });
       setIsNewTask(!task._id && !task.id);
-      
-      // Check if this is a created task (created by the current user)
-      const userEmail = localStorage.getItem('userEmail');
-      setIsCreatedTask(task.creator_id === userEmail);
       
       // If it's a new task, fetch projects
       if (!task._id && !task.id) {
@@ -161,11 +156,6 @@ const EditModal = ({ isOpen, onClose, task, onSave, type }) => {
   // Handle form field changes
   const handleChange = (e) => {
     const { name, value } = e.target;
-    
-    // Prevent changing status for created tasks
-    if (name === 'status' && (isCreatedTask || (isNewTask && type === 'created'))) {
-      return;
-    }
     
     if (name === 'project_id' && value) {
       // When project is selected, also update project_name
@@ -308,23 +298,17 @@ const EditModal = ({ isOpen, onClose, task, onSave, type }) => {
 
               <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700">Status</label>
-                  {isCreatedTask || (isNewTask && type === 'created') ? (
-                    <div className="mt-1 px-3 py-2 border rounded-md w-full bg-gray-100 text-gray-700">
-                      To Do
-                    </div>
-                  ) : (
-                    <select
-                        name="status"
-                        value={editedTask.status || ''}
-                        onChange={handleChange}
-                        className="mt-1 px-3 py-2 border rounded-md w-full"
-                    >
-                        <option value="">Select Status</option>
-                        <option value="0">To Do</option>
-                        <option value="1">In Progress</option>
-                        <option value="2">Completed</option>
-                    </select>
-                  )}
+                  <select
+                      name="status"
+                      value={editedTask.status || ''}
+                      onChange={handleChange}
+                      className="mt-1 px-3 py-2 border rounded-md w-full"
+                  >
+                      <option value="">Select Status</option>
+                      <option value="0">To Do</option>
+                      <option value="1">In Progress</option>
+                      <option value="2">Completed</option>
+                  </select>
                   {errors.status && <p className="text-red-500 text-xs mt-1">{errors.status}</p>}
               </div>
 
@@ -480,53 +464,33 @@ const FilterModal = ({ isOpen, onClose, filters, setFilters, onApply }) => {
   );
 };
 
-const MyTasksTable = ({ type = 'assigned' }) => { 
-// State to manage the list of all tasks fetched from the server
+const MyTasksTable = () => { 
+  // State variables
   const [tasks, setTasks] = useState([]);
-  const [filteredTasks, setFilteredTasks] = useState([]);// State to store tasks after applying filters (e.g., search query or other criteria)
-  const [loading, setLoading] = useState(true);// Loading indicator to display a spinner or message while tasks are being fetched
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filteredTasks, setFilteredTasks] = useState([]);
+  const [expandedProjects, setExpandedProjects] = useState(new Set()); // To track expanded projects
+  
+  // State for toast notifications
   const [toast, setToast] = useState(null);
-  const [expandedProjects, setExpandedProjects] = useState(new Set());// State to manage which project rows are expanded in the UI (if tasks are grouped by project)
-  // State to manage the delete modal
-  const [deleteModal, setDeleteModal] = useState({
-    isOpen: false,
-    taskId: null,
-    taskTitle: '',
-    project_id:''
-  });
-  // State to manage the assignees modal
-  const [assigneesModal, setAssigneesModal] = useState({
-    isOpen: false,
-    taskId: null
-  });
-  // State to manage the filter modal
+  
+  // State for modals
+  const [editModal, setEditModal] = useState({ isOpen: false, task: null });
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, taskId: null, taskTitle: '' });
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [filters, setFilters] = useState({
-    status: 'all',
-    priority: 'all',
-    project: 'all',
-    deadline: 'all'
+    status: '',
+    priority: '',
+    fromDate: '',
+    toDate: ''
   });
-   // Function to handle clicks for adding assignees to a specific task
-  // It sets the `assigneesModal` state to open and assigns the task ID
-  const handleAddAssigneesClick = (taskId) => {
-    setAssigneesModal({
-      isOpen: true,
-      taskId
-    });
-  };
   
-// Function to display a toast notification
+  // Function to display a toast notification
   const showToast = (message, type) => {
       // Updates the toast state with a message and type (e.g., success or error)
     setToast({ message, type });
   };
-  // State to manage the Edit Task modal visibility and content
-  const [editModal, setEditModal] = useState({
-    isOpen: false,// Tracks whether the modal is open or closed
-    task: null // Holds the task object being edited, or null if no task is selected
-  });
   
 // Function to handle when the Delete button is clicked for a task
   const handleDeleteClick = useCallback((task) => {
@@ -572,7 +536,7 @@ const MyTasksTable = ({ type = 'assigned' }) => {
   // Effect hook to fetch tasks whenever the 'type' prop changes
   useEffect(() => {
     fetchTasks();
-  }, [type]);
+  }, []);
 
   // Function to fetch tasks from the server
   const fetchTasks = async () => {
@@ -582,19 +546,9 @@ const MyTasksTable = ({ type = 'assigned' }) => {
       const token = localStorage.getItem('token');
       const userEmail = localStorage.getItem('userEmail');
       
-      console.log(`Fetching ${type} tasks for user:`, { userId, userEmail });
+      console.log(`Fetching assigned tasks for user:`, { userId, userEmail });
       
-      let taskData = [];
-      
-      if (type === 'assigned') {
-        taskData = await fetchAssignedTasks();
-      } else {
-        // For created tasks, use the existing approach
-        const response = await api.get(
-          `task/user/${userEmail}/created-tasks`,
-        );
-        taskData = response.data;
-      }
+      let taskData = await fetchAssignedTasks();
       
       // Sort tasks by project, priority, and deadline
       const sortedTasks = taskData.sort((a, b) => {
@@ -618,12 +572,12 @@ const MyTasksTable = ({ type = 'assigned' }) => {
         return 0;
       });
 
-      console.log(`Found ${sortedTasks.length} ${type} tasks after sorting`);
+      console.log(`Found ${sortedTasks.length} assigned tasks after sorting`);
       setTasks(sortedTasks);
       setFilteredTasks(sortedTasks);
     } catch (error) {
-      console.error(`Error fetching ${type} tasks:`, error);
-      showToast(`Failed to fetch ${type} tasks`, "error");
+      console.error(`Error fetching assigned tasks:`, error);
+      showToast(`Failed to fetch assigned tasks`, "error");
     } finally {
       setLoading(false);
     }
@@ -726,6 +680,7 @@ const MyTasksTable = ({ type = 'assigned' }) => {
 // Function to handle saving the edited task details or creating a new task
   const handleEditSave = async (editedTask) => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('token');
       const userEmail = localStorage.getItem('userEmail');
       
@@ -747,7 +702,8 @@ const MyTasksTable = ({ type = 'assigned' }) => {
           ...editedTask,
           creator_id: userEmail,
           created_at: new Date().toISOString(),
-          status: '0' // Always start as 'To Do'
+          status: editedTask.status || '0', // Default to 'To Do'
+          assignees: [userEmail] // Add current user as an assignee
         };
         
         // Call the API to create a new task
@@ -762,53 +718,75 @@ const MyTasksTable = ({ type = 'assigned' }) => {
         );
         
         // Add the new task to our local state
-        const newTask = response.data;
-        const updatedTasks = [newTask, ...tasks];
-        setTasks(updatedTasks);
-        setFilteredTasks(updatedTasks);
-        showToast("Task created successfully", "success");
-      } else {
-        // Updating an existing task
-        // Find the task in our local state
-        const taskToUpdate = tasks.find(task => 
-          (task._id && task._id === editedTask._id) || (task.id && task.id === editedTask.id)
-        );
-        
-        if (!taskToUpdate) {
-          showToast("Task not found", "error");
-          return;
+        if (response.data && response.data.task) {
+          const newTask = response.data.task;
+          setTasks(prevTasks => [newTask, ...prevTasks]);
+          setFilteredTasks(prevTasks => [newTask, ...prevTasks]);
+        } else if (response.data) {
+          const newTask = response.data;
+          setTasks(prevTasks => [newTask, ...prevTasks]);
+          setFilteredTasks(prevTasks => [newTask, ...prevTasks]);
         }
         
-        console.log(`Updating task ${editedTask._id || editedTask.id} details`);
+        showToast("Task created successfully", "success");
         
-        // Call the API to update the task details
-        await axios.put(
-          `http://localhost:3001/task/${editedTask._id || editedTask.id}/edit-details`,
-          editedTask,
-          {
-            headers: {
-              Authorization: token
-            }
-          }
-        );
+        // Close the modal
+        setEditModal({ isOpen: false, task: null });
+      } else {
+        const taskId = editedTask._id || editedTask.id;
+        console.log(`Updating task: ${taskId}`);
         
-        // Update the task in local state
-        const updatedTasks = tasks.map(task => {
-          if ((task._id && task._id === editedTask._id) || (task.id && task.id === editedTask.id)) {
-            return editedTask;
-          }
-          return task;
-        });
+        // Create payload for update, only including fields that have changed
+        const updatePayload = {};
         
-        setTasks(updatedTasks);
-        setFilteredTasks(updatedTasks);
-        showToast("Task updated successfully", "success");
+        // Add fields that are allowed to be updated (not all fields are editable)
+        if (editedTask.title !== undefined) updatePayload.title = editedTask.title;
+        if (editedTask.description !== undefined) updatePayload.description = editedTask.description;
+        if (editedTask.priority !== undefined) updatePayload.priority = editedTask.priority;
+        if (editedTask.deadline !== undefined) updatePayload.deadline = editedTask.deadline;
+        if (editedTask.status !== undefined) updatePayload.status = editedTask.status;
+        if (editedTask.project_id !== undefined) updatePayload.project_id = editedTask.project_id;
+        
+        console.log('Update payload:', updatePayload);
+        
+        // Only make the API call if there are actual changes
+        if (Object.keys(updatePayload).length > 0) {
+          // Call the API to update the task
+          const response = await api.put(`/task/${taskId}`, updatePayload);
+          console.log('Task update response:', response.data);
+          
+          // Update the task in the local state
+          setTasks(prevTasks => 
+            prevTasks.map(task => 
+              (task._id === taskId || task.id === taskId) 
+                ? { ...task, ...updatePayload } 
+                : task
+            )
+          );
+          
+          // Update filtered tasks as well
+          setFilteredTasks(prevTasks => 
+            prevTasks.map(task => 
+              (task._id === taskId || task.id === taskId) 
+                ? { ...task, ...updatePayload } 
+                : task
+            )
+          );
+          
+          // Show success message
+          showToast('Task updated successfully', 'success');
+        } else {
+          console.log('No changes detected, skipping update');
+        }
+        
+        // Close the modal
+        setEditModal({ isOpen: false, task: null });
       }
     } catch (error) {
-      console.error(isNewTask ? 'Create task error:' : 'Edit task error:', error);
-      showToast(isNewTask ? "Failed to create task" : "Failed to update task", "error");
+      console.error('Error saving task:', error);
+      showToast('Failed to save task', 'error');
     } finally {
-      setEditModal({ isOpen: false, task: null });
+      setLoading(false);
     }
   };
 
@@ -973,7 +951,7 @@ const MyTasksTable = ({ type = 'assigned' }) => {
         status: '0',  // Default to 'To Do'
         priority: '1', // Default to 'Medium' priority
         creator_id: userEmail, // Set the current user as creator
-        assignees: [], // Empty assignees list
+        assignees: [userEmail], // Add current user as an assignee
         created_at: new Date().toISOString(),
         deadline: null
       }
@@ -1014,38 +992,33 @@ const MyTasksTable = ({ type = 'assigned' }) => {
   }, {});
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+    <div className="bg-gray-50 min-h-screen">
+      {/* Show toast notification if present */}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       
-      <EditModal
-        isOpen={editModal.isOpen}
-        onClose={() => setEditModal({ isOpen: false, task: null })}
+      {/* Modals for editing, deleting tasks and adding assignees */}
+      <EditModal 
+        isOpen={editModal.isOpen} 
+        onClose={() => setEditModal({isOpen: false, task: null})}
         task={editModal.task}
         onSave={handleEditSave}
-        type={type}
       />
       
-      <DeleteModal
+      <DeleteModal 
         isOpen={deleteModal.isOpen}
-        onClose={() => setDeleteModal({ isOpen: false, taskId: null, taskTitle: '' })}
-        onConfirm={handleDeleteConfirm}
+        onClose={() => setDeleteModal({isOpen: false, taskId: null, taskTitle: ''})}
+        onConfirm={() => handleDeleteConfirm(deleteModal.taskId)}
         taskTitle={deleteModal.taskTitle}
       />
       
-      <AddAssigneesModal
-        isOpen={assigneesModal.isOpen}
-        onClose={() => setAssigneesModal({ isOpen: false, taskId: null })}
-        taskId={assigneesModal.taskId}
+      <AddAssigneesModal 
+        isOpen={false}
+        onClose={() => {}}
+        taskId={null}
         onSuccess={fetchTasks}
       />
       
-      <FilterModal
+      <FilterModal 
         isOpen={filterModalOpen}
         onClose={() => setFilterModalOpen(false)}
         filters={filters}
@@ -1057,14 +1030,13 @@ const MyTasksTable = ({ type = 'assigned' }) => {
       <div className="p-6 border-b border-gray-200">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">{type === 'assigned' ? 'Tasks Assigned to You' : 'Tasks Created by You'}</h1>
+            <h1 className="text-2xl font-bold text-gray-800">Tasks Assigned to You</h1>
             <p className="text-gray-500 mt-1">
               {filteredTasks.length} {filteredTasks.length === 1 ? 'task' : 'tasks'} • Last updated: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
           
           <div className="flex flex-wrap gap-2">
-            {/* Make the New Task button always visible regardless of type */}
             <button 
               className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
               onClick={() => handleCreateNewTask()}
@@ -1087,91 +1059,59 @@ const MyTasksTable = ({ type = 'assigned' }) => {
         
         {/* Task Analytics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {type === 'created' ? (
-            // For created tasks, show only Total Tasks and To Do
-            <>
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                <p className="text-sm font-medium text-blue-600 mb-1">Total Tasks</p>
-                <div className="flex items-center justify-between">
-                  <p className="text-2xl font-bold text-gray-800">{filteredTasks.length}</p>
-                  <div className="p-2 bg-blue-100 rounded-md text-blue-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                  </div>
-                </div>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+            <p className="text-sm font-medium text-blue-600 mb-1">Total Tasks</p>
+            <div className="flex items-center justify-between">
+              <p className="text-2xl font-bold text-gray-800">{filteredTasks.length}</p>
+              <div className="p-2 bg-blue-100 rounded-md text-blue-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
               </div>
-              
-              <div className="bg-red-50 p-4 rounded-lg border border-red-100">
-                <p className="text-sm font-medium text-red-600 mb-1">To Do</p>
-                <div className="flex items-center justify-between">
-                  <p className="text-2xl font-bold text-gray-800">{filteredTasks.length}</p>
-                  <div className="p-2 bg-red-100 rounded-md text-red-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                  </div>
-                </div>
+            </div>
+          </div>
+          
+          <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+            <p className="text-sm font-medium text-green-600 mb-1">Completed</p>
+            <div className="flex items-center justify-between">
+              <p className="text-2xl font-bold text-gray-800">
+                {filteredTasks.filter(task => task.status === '2' || task.status === 2).length}
+              </p>
+              <div className="p-2 bg-green-100 rounded-md text-green-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
               </div>
-            </>
-          ) : (
-            // For assigned tasks, show all statuses
-            <>
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                <p className="text-sm font-medium text-blue-600 mb-1">Total Tasks</p>
-                <div className="flex items-center justify-between">
-                  <p className="text-2xl font-bold text-gray-800">{filteredTasks.length}</p>
-                  <div className="p-2 bg-blue-100 rounded-md text-blue-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                  </div>
-                </div>
+            </div>
+          </div>
+          
+          <div className="bg-amber-50 p-4 rounded-lg border border-amber-100">
+            <p className="text-sm font-medium text-amber-600 mb-1">In Progress</p>
+            <div className="flex items-center justify-between">
+              <p className="text-2xl font-bold text-gray-800">
+                {filteredTasks.filter(task => task.status === '1' || task.status === 1).length}
+              </p>
+              <div className="p-2 bg-amber-100 rounded-md text-amber-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </div>
-              
-              <div className="bg-green-50 p-4 rounded-lg border border-green-100">
-                <p className="text-sm font-medium text-green-600 mb-1">Completed</p>
-                <div className="flex items-center justify-between">
-                  <p className="text-2xl font-bold text-gray-800">
-                    {filteredTasks.filter(task => task.status === '2' || task.status === 2).length}
-                  </p>
-                  <div className="p-2 bg-green-100 rounded-md text-green-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                </div>
+            </div>
+          </div>
+          
+          <div className="bg-red-50 p-4 rounded-lg border border-red-100">
+            <p className="text-sm font-medium text-red-600 mb-1">To Do</p>
+            <div className="flex items-center justify-between">
+              <p className="text-2xl font-bold text-gray-800">
+                {filteredTasks.filter(task => task.status === '0' || task.status === 0).length}
+              </p>
+              <div className="p-2 bg-red-100 rounded-md text-red-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
               </div>
-              
-              <div className="bg-amber-50 p-4 rounded-lg border border-amber-100">
-                <p className="text-sm font-medium text-amber-600 mb-1">In Progress</p>
-                <div className="flex items-center justify-between">
-                  <p className="text-2xl font-bold text-gray-800">
-                    {filteredTasks.filter(task => task.status === '1' || task.status === 1).length}
-                  </p>
-                  <div className="p-2 bg-amber-100 rounded-md text-amber-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-red-50 p-4 rounded-lg border border-red-100">
-                <p className="text-sm font-medium text-red-600 mb-1">To Do</p>
-                <div className="flex items-center justify-between">
-                  <p className="text-2xl font-bold text-gray-800">
-                    {filteredTasks.filter(task => task.status === '0' || task.status === 0).length}
-                  </p>
-                  <div className="p-2 bg-red-100 rounded-md text-red-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
+            </div>
+          </div>
         </div>
         
         {/* Progress Bar */}
@@ -1216,65 +1156,41 @@ const MyTasksTable = ({ type = 'assigned' }) => {
           </div>
           
           <div className="flex gap-2">
-            {type === 'created' ? (
-              // For created tasks, no status filter needed since all tasks are "To Do"
-              <select
-                className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                onChange={(e) => {
-                  // Filter by priority
-                  const priority = e.target.value;
-                  if (priority === 'all') {
-                    setFilteredTasks(tasks);
-                  } else {
-                    setFilteredTasks(tasks.filter(task => task.priority === priority));
-                  }
-                }}
-              >
-                <option value="all">All Priorities</option>
-                <option value="0">Low</option>
-                <option value="1">Medium</option>
-                <option value="2">High</option>
-              </select>
-            ) : (
-              // For assigned tasks, show all status filters
-              <>
-                <select
-                  className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  onChange={(e) => {
-                    // Filter by status
-                    const status = e.target.value;
-                    if (status === 'all') {
-                      setFilteredTasks(tasks);
-                    } else {
-                      setFilteredTasks(tasks.filter(task => task.status === status));
-                    }
-                  }}
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="0">To Do</option>
-                  <option value="1">In Progress</option>
-                  <option value="2">Completed</option>
-                </select>
-                
-                <select
-                  className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  onChange={(e) => {
-                    // Filter by priority
-                    const priority = e.target.value;
-                    if (priority === 'all') {
-                      setFilteredTasks(tasks);
-                    } else {
-                      setFilteredTasks(tasks.filter(task => task.priority === priority));
-                    }
-                  }}
-                >
-                  <option value="all">All Priorities</option>
-                  <option value="0">Low</option>
-                  <option value="1">Medium</option>
-                  <option value="2">High</option>
-                </select>
-              </>
-            )}
+            <select
+              className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => {
+                // Filter by status
+                const status = e.target.value;
+                if (status === 'all') {
+                  setFilteredTasks(tasks);
+                } else {
+                  setFilteredTasks(tasks.filter(task => task.status === status));
+                }
+              }}
+            >
+              <option value="all">All Statuses</option>
+              <option value="0">To Do</option>
+              <option value="1">In Progress</option>
+              <option value="2">Completed</option>
+            </select>
+            
+            <select
+              className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => {
+                // Filter by priority
+                const priority = e.target.value;
+                if (priority === 'all') {
+                  setFilteredTasks(tasks);
+                } else {
+                  setFilteredTasks(tasks.filter(task => task.priority === priority));
+                }
+              }}
+            >
+              <option value="all">All Priorities</option>
+              <option value="0">Low</option>
+              <option value="1">Medium</option>
+              <option value="2">High</option>
+            </select>
             
             <button 
               type="button" 
@@ -1312,19 +1228,8 @@ const MyTasksTable = ({ type = 'assigned' }) => {
             </div>
             <h3 className="text-xl font-semibold text-gray-800 mb-2">No tasks found</h3>
             <p className="text-gray-500 mb-6">
-              {type === 'assigned' 
-                ? "You don't have any assigned tasks yet." 
-                : "You haven't created any tasks yet."}
+              You don't have any assigned tasks yet.
             </p>
-            {type === 'created' && (
-              <button 
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300"
-                onClick={() => setEditModal({ isOpen: true, task: { status: '0', priority: '1' } })}
-              >
-                <PlusCircle className="h-4 w-4 mr-2" />
-                Create your first task
-              </button>
-            )}
           </div>
         ) : (
           <div className="space-y-6">
@@ -1381,7 +1286,6 @@ const MyTasksTable = ({ type = 'assigned' }) => {
                           <th className="text-left py-3 px-6 font-medium text-xs text-gray-500 uppercase tracking-wider">Deadline</th>
                           <th className="w-10"></th>
                           <th className="w-10"></th>
-                          <th className="w-10"></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -1399,25 +1303,19 @@ const MyTasksTable = ({ type = 'assigned' }) => {
                               </div>
                             </td>
                             <td className="py-4 px-6">
-                              {type === 'created' ? (
-                                <span className="inline-flex justify-center items-center px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                  To Do
-                                </span>
-                              ) : (
-                                <select
-                                  value={task.status}
-                                  onChange={(e) => handleStatusChange(task._id || task.id, e.target.value)}
-                                  className="px-3 py-1 rounded-full text-xs font-medium border-none focus:ring-0 cursor-pointer"
-                                  style={{ 
-                                    backgroundColor: getStatusBgColor(task.status),
-                                    color: getStatusTextColor(task.status)
-                                  }}
-                                >
-                                  <option value="0">To Do</option>
-                                  <option value="1">In Progress</option>
-                                  <option value="2">Completed</option>
-                                </select>
-                              )}
+                              <select
+                                value={task.status}
+                                onChange={(e) => handleStatusChange(task._id || task.id, e.target.value)}
+                                className="px-3 py-1 rounded-full text-xs font-medium border-none focus:ring-0 cursor-pointer"
+                                style={{ 
+                                  backgroundColor: getStatusBgColor(task.status),
+                                  color: getStatusTextColor(task.status)
+                                }}
+                              >
+                                <option value="0">To Do</option>
+                                <option value="1">In Progress</option>
+                                <option value="2">Completed</option>
+                              </select>
                             </td>
                             <td className="py-4 px-6">
                               <span className={`inline-flex justify-center items-center px-3 py-1 rounded-full text-xs font-medium ${getPriorityStyle(task.priority)}`}>
@@ -1434,27 +1332,12 @@ const MyTasksTable = ({ type = 'assigned' }) => {
                             </td>
                             <td className="py-4 px-2">
                               <button
-                                onClick={() => handleAddAssigneesClick(task._id)}
-                                className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
-                                title="Add Assignees"
+                                onClick={() => handleEditClick(task)}
+                                className="p-1 text-amber-500 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors"
+                                title="Edit Task"
                               >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                                </svg>
+                                <Edit3 className="h-5 w-5" />
                               </button>
-                            </td>
-                            <td className="py-4 px-2">
-                              {type === 'created' ? (
-                                <div></div> // Empty div for created tasks (no edit button)
-                              ) : (
-                                <button
-                                  onClick={() => handleEditClick(task)}
-                                  className="p-1 text-amber-500 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors"
-                                  title="Edit Task"
-                                >
-                                  <Edit3 className="h-5 w-5" />
-                                </button>
-                              )}
                             </td>
                             <td className="py-4 px-2">
                               <button

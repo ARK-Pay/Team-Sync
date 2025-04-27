@@ -19,6 +19,11 @@ const ComposeModal = ({ onClose, onSend, onSaveDraft, draftData = null, userTeam
   const fileInputRef = useRef(null);
   const modalRef = useRef(null);
 
+  // Debug log for userTeamSyncEmail prop
+  useEffect(() => {
+    console.log('ComposeModal received userTeamSyncEmail prop:', userTeamSyncEmail);
+  }, []);
+
   // Initialize form with draft data if provided
   useEffect(() => {
     if (draftData) {
@@ -56,11 +61,47 @@ const ComposeModal = ({ onClose, onSend, onSaveDraft, draftData = null, userTeam
     }
   }, [draftData]);
 
+  // Generate a unique TeamSync email
+  const generateDynamicEmail = () => {
+    // Try to get user info from localStorage
+    const userInfo = localStorage.getItem('userInfo');
+    if (userInfo) {
+      try {
+        const parsedInfo = JSON.parse(userInfo);
+        if (parsedInfo && parsedInfo.email) {
+          const email = parsedInfo.email;
+          const username = email.split('@')[0].toLowerCase();
+          
+          // Add a random suffix
+          const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+          const tempEmail = `${username}${randomSuffix}@teamsync.com`;
+          
+          console.log('Generated new random TeamSync email:', tempEmail);
+          setFromEmail(tempEmail);
+          localStorage.setItem('teamSyncEmail', tempEmail);
+          return;
+        }
+      } catch (e) {
+        console.error('Error generating email in ComposeModal:', e);
+      }
+    }
+    
+    // Generate a completely random email if no user info
+    const randomUsername = 'user' + Math.floor(Math.random() * 100000).toString();
+    const fallbackEmail = `${randomUsername}@teamsync.com`;
+    console.log('Generated fallback random email:', fallbackEmail);
+    setFromEmail(fallbackEmail);
+    localStorage.setItem('teamSyncEmail', fallbackEmail);
+  };
+
   // Set the user's TeamSync email when it becomes available
   useEffect(() => {
-    if (userTeamSyncEmail) {
+    if (userTeamSyncEmail && userTeamSyncEmail.trim() !== '') {
       console.log('Setting from email in ComposeModal:', userTeamSyncEmail);
       setFromEmail(userTeamSyncEmail);
+    } else {
+      console.log('TeamSync email not provided by parent, generating a new one...');
+      generateDynamicEmail();
     }
   }, [userTeamSyncEmail]);
 
@@ -289,106 +330,113 @@ const ComposeModal = ({ onClose, onSend, onSaveDraft, draftData = null, userTeam
   return (
     <div 
       ref={modalRef}
-      className={`fixed bottom-0 right-10 bg-white shadow-xl rounded-t-lg w-full max-w-2xl z-50 ${
-        isMinimized ? 'h-12' : 'h-[600px]'
-      } flex flex-col transition-all duration-200`}
+      className={`fixed ${isMinimized ? 'bottom-0 right-0 w-60 h-14' : 'top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-2/3 h-3/4'} 
+        bg-white rounded-t-lg shadow-xl transition-all duration-300 z-50 flex flex-col`}
+      style={{ maxWidth: isMinimized ? '240px' : '800px', maxHeight: isMinimized ? '48px' : '700px' }}
     >
-      {/* Modal Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-100 rounded-t-lg cursor-pointer" onClick={toggleMinimize}>
-        <h3 className="text-sm font-medium text-gray-700">
-          {draftData ? 'Edit Draft' : 'New Message'}
-        </h3>
+      {/* Header */}
+      <div className="bg-blue-600 text-white px-4 py-2 rounded-t-lg flex justify-between items-center">
+        <h2 className="text-lg font-medium">
+          {isMinimized ? 
+            (subject ? subject.substring(0, 15) + (subject.length > 15 ? '...' : '') : 'New Message') :
+            'New Message'}
+        </h2>
         <div className="flex items-center space-x-2">
-          {isMinimized ? (
-            <Maximize2 size={16} className="text-gray-500" />
-          ) : (
-            <Minimize2 size={16} className="text-gray-500" />
-          )}
-          <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="text-gray-500 hover:text-gray-700">
-            <X size={16} />
+          <button onClick={toggleMinimize} className="text-white hover:text-gray-200">
+            {isMinimized ? <Maximize2 size={18} /> : <Minimize2 size={18} />}
+          </button>
+          <button onClick={onClose} className="text-white hover:text-gray-200">
+            <X size={18} />
           </button>
         </div>
       </div>
-
-      {/* Error/Success Messages */}
-      {error && (
-        <div className="px-4 py-2 bg-red-100 text-red-800 text-sm">
-          {error}
-        </div>
-      )}
       
-      {successMessage && (
-        <div className="px-4 py-2 bg-green-100 text-green-800 text-sm">
-          {successMessage}
-        </div>
-      )}
-
-      {/* Modal Content */}
       {!isMinimized && (
         <>
-          {/* Email Form */}
-          <div className="border-b border-gray-200">
-            {/* From */}
-            <div className="flex items-center px-4 py-2 border-b border-gray-100">
-              <label className="w-12 text-sm text-gray-600">From:</label>
-              <input
-                type="text"
-                value={fromEmail}
-                disabled
-                className="flex-1 border-0 focus:ring-0 text-sm bg-gray-50"
-              />
+          {/* From field to display user's TeamSync email */}
+          <div className="px-4 py-2 border-b">
+            <div className="flex items-center">
+              <span className="w-16 text-gray-600 font-medium">From:</span>
+              {fromEmail ? (
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-gray-800 font-mono">{fromEmail}</span>
+                  <button 
+                    onClick={generateDynamicEmail}
+                    className="ml-2 text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                    title="Generate a new email address"
+                  >
+                    Generate New ID
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center">
+                  <span className="text-gray-500 italic">Loading your email address...</span>
+                  <button 
+                    onClick={generateDynamicEmail}
+                    className="ml-2 text-xs text-blue-500 hover:text-blue-700"
+                  >
+                    Generate
+                  </button>
+                </div>
+              )}
             </div>
-
-            {/* To */}
-            <div className="flex items-center px-4 py-2 border-b border-gray-100">
-              <label className="w-12 text-sm text-gray-600">To:</label>
-              <input
-                type="text"
+          </div>
+          
+          {/* Email form */}
+          <div className="px-4 py-2 border-b">
+            <div className="flex items-center">
+              <span className="w-16 text-gray-600 font-medium">To:</span>
+              <input 
+                type="text" 
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                className="flex-1 border-0 focus:ring-0 text-sm"
-                placeholder="Recipients (separate with commas)"
+                className="flex-1 outline-none"
+                placeholder="example@teamsync.com"
               />
             </div>
-
-            {/* CC/BCC Toggle */}
-            {!showCcBcc && (
-              <div className="px-4 py-1 border-b border-gray-100">
-                <button
-                  onClick={() => setShowCcBcc(true)}
-                  className="text-xs text-blue-600 hover:text-blue-800"
-                >
-                  Add Cc/Bcc
-                </button>
-              </div>
-            )}
-
-            {/* CC/BCC Fields */}
-            {showCcBcc && (
-              <>
-                <div className="flex items-center px-4 py-2 border-b border-gray-100">
-                  <label className="w-12 text-sm text-gray-600">Cc:</label>
-                  <input
-                    type="text"
+          </div>
+          
+          {/* Show/hide CC/BCC */}
+          {!showCcBcc && (
+            <div className="px-4 py-1 border-b">
+              <button 
+                onClick={() => setShowCcBcc(true)}
+                className="text-sm text-gray-600 hover:text-blue-600"
+              >
+                CC/BCC
+              </button>
+            </div>
+          )}
+          
+          {/* CC/BCC fields */}
+          {showCcBcc && (
+            <>
+              <div className="px-4 py-2 border-b">
+                <div className="flex items-center">
+                  <span className="w-16 text-gray-600 font-medium">Cc:</span>
+                  <input 
+                    type="text" 
                     value={cc}
                     onChange={(e) => setCc(e.target.value)}
-                    className="flex-1 border-0 focus:ring-0 text-sm"
-                    placeholder="Carbon copy"
+                    className="flex-1 outline-none"
+                    placeholder="example@teamsync.com"
                   />
                 </div>
-                <div className="flex items-center px-4 py-2 border-t border-gray-100">
-                  <label className="w-12 text-sm text-gray-600">Bcc:</label>
-                  <input
-                    type="text"
+              </div>
+              <div className="px-4 py-2 border-b">
+                <div className="flex items-center">
+                  <span className="w-16 text-gray-600 font-medium">Bcc:</span>
+                  <input 
+                    type="text" 
                     value={bcc}
                     onChange={(e) => setBcc(e.target.value)}
-                    className="flex-1 border-0 focus:ring-0 text-sm"
-                    placeholder="Blind carbon copy"
+                    className="flex-1 outline-none"
+                    placeholder="example@teamsync.com"
                   />
                 </div>
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
 
           {/* Subject */}
           <div className="px-4 py-2 border-b border-gray-200">

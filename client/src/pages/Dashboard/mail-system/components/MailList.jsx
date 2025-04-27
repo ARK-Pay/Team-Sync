@@ -294,6 +294,112 @@ const MailList = ({ emails, selectedEmail, onSelectEmail, loading, error, curren
     }
   };
 
+  const renderEmails = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center h-32">
+          <p className="text-gray-500">Loading emails...</p>
+        </div>
+      );
+    }
+    
+    if (error) {
+      return (
+        <div className="p-4 text-red-600">
+          <p>{error}</p>
+        </div>
+      );
+    }
+    
+    if (!emails || emails.length === 0) {
+      return (
+        <div className="p-8 text-center text-gray-500">
+          <p className="mb-2 text-lg">No emails in this folder</p>
+          <p className="text-sm">
+            {currentFolder === 'inbox' ? "Your inbox is empty. You'll see new messages here when they arrive." : 
+             currentFolder === 'sent' ? "You haven't sent any emails yet." :
+             currentFolder === 'drafts' ? "You don't have any saved drafts." :
+             currentFolder === 'trash' ? "Your trash is empty." :
+             currentFolder === 'archived' ? "You don't have any archived emails." :
+             "No emails found in this folder."}
+          </p>
+        </div>
+      );
+    }
+    
+    return emails.map(email => {
+      const isSelected = selectedEmail && selectedEmail._id === email._id;
+      
+      return (
+        <div 
+          key={email._id}
+          onClick={() => onSelectEmail(email)}
+          className={`p-3 border-b cursor-pointer hover:bg-gray-50 transition-colors duration-150 ${
+            isSelected ? 'bg-blue-50' : email.isRead ? 'bg-white' : 'bg-gray-100'
+          }`}
+        >
+          <div className="flex items-start">
+            {/* Star button */}
+            <button 
+              onClick={(e) => handleStar(e, email)}
+              className="mr-2 mt-1"
+              disabled={actionLoading[email._id]}
+            >
+              <Star 
+                size={18} 
+                className={`${
+                  email.isStarred ? 'text-yellow-400 fill-yellow-400' : 'text-gray-400'
+                } hover:text-yellow-500 transition-colors duration-150`} 
+              />
+            </button>
+            
+            {/* Email Content */}
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between mb-1">
+                {/* From/To line */}
+                <div className={`font-medium truncate ${!email.isRead && 'font-semibold'}`}>
+                  {currentFolder === 'sent' || currentFolder === 'drafts' 
+                    ? `To: ${email.recipientNames?.join(', ') || 'No recipients'}`
+                    : `From: ${email.senderName}`}
+                </div>
+                
+                {/* Date */}
+                <div className="text-xs text-gray-500 sm:ml-2 whitespace-nowrap">
+                  {formatDate(email.timestamp)}
+                </div>
+              </div>
+              
+              {/* Show sender's TeamSync email */}
+              <div className="text-xs text-gray-500 mb-1">
+                {currentFolder === 'sent' || currentFolder === 'drafts'
+                  ? '' // Don't show your own email in sent/drafts
+                  : <>From: <span className="font-mono">{email.senderEmail}</span></>}
+              </div>
+              
+              {/* Subject */}
+              <div className={`truncate ${!email.isRead && 'font-semibold'}`}>
+                {email.subject || '(No Subject)'}
+              </div>
+              
+              {/* Preview */}
+              <div className="text-sm text-gray-600 truncate mt-1">
+                {email.body ? email.body.substring(0, 100) : ''}
+              </div>
+            </div>
+            
+            {/* Indicators and Actions */}
+            <div className="ml-2 flex flex-col items-center">
+              {/* Attachment indicator */}
+              {email.hasAttachments && (
+                <Paperclip size={16} className="text-gray-400 mb-2" />
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    });
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -337,196 +443,7 @@ const MailList = ({ emails, selectedEmail, onSelectEmail, loading, error, curren
       
       {/* Email list */}
       <div className="flex-1 overflow-auto">
-        {!loading && !error && emails.map((email) => (
-          <div
-            key={email._id}
-            onClick={() => onSelectEmail(email)}
-            className={`border-b border-gray-200 px-4 py-3 cursor-pointer transition-colors ${
-              selectedEmail && selectedEmail._id === email._id
-                ? 'bg-blue-50'
-                : 'hover:bg-gray-50'
-            } ${!email.isRead && currentFolder === 'inbox' ? 'bg-blue-50 font-semibold' : ''}`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center min-w-0">
-                {/* Star button */}
-                <button
-                  onClick={(e) => handleStar(e, email)}
-                  className={`mr-3 ${
-                    email.isStarred ? 'text-yellow-400' : 'text-gray-400 hover:text-gray-600'
-                  }`}
-                  disabled={actionLoading[email._id]}
-                >
-                  <Star className="h-5 w-5" />
-                </button>
-                
-                {/* Sender/Recipient info */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="truncate font-medium">
-                      {currentFolder === 'sent' || currentFolder === 'drafts'
-                        ? `To: ${email.recipientNames?.join(', ') || 'No recipients'}`
-                        : email.senderName || 'Unknown Sender'}
-                    </div>
-                    <div className="ml-2 flex-shrink-0 text-sm text-gray-500">
-                      {formatDate(email.timestamp)}
-                    </div>
-                  </div>
-                  
-                  {/* Subject and preview */}
-                  <div className="truncate text-sm text-gray-600">
-                    {email.subject || '(No Subject)'}
-                    {email.hasAttachments && (
-                      <Paperclip className="inline-block ml-1 h-4 w-4 text-gray-400" />
-                    )}
-                  </div>
-                  <div className="truncate text-xs text-gray-500 mt-1">
-                    {email.body.substring(0, 100)}
-                  </div>
-                </div>
-              </div>
-              
-              {/* Actions */}
-              <div className="ml-4 flex items-center">
-                {/* Print button */}
-                <button
-                  onClick={(e) => handlePrint(e, email)}
-                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
-                  disabled={actionLoading[email._id]}
-                >
-                  <Printer className="h-4 w-4" />
-                </button>
-                
-                {/* Options button */}
-                <div className="relative">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowOptions(showOptions === email._id ? null : email._id);
-                    }}
-                    className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded ml-1"
-                    disabled={actionLoading[email._id]}
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                  </button>
-                  
-                  {/* Options dropdown */}
-                  {showOptions === email._id && (
-                    <div
-                      className="absolute right-0 mt-1 w-48 bg-white rounded-md shadow-lg z-10 border border-gray-200"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {currentFolder === 'trash' ? (
-                        <>
-                          <button
-                            onClick={(e) => handleDelete(e, email)}
-                            disabled={actionLoading[email._id]}
-                            className={`flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100 transition-colors ${
-                              actionLoading[email._id] ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                          >
-                            <Trash className="h-4 w-4 mr-2" />
-                            Delete Permanently
-                          </button>
-                          <button
-                            onClick={(e) => handleMove(e, email, 'inbox')}
-                            disabled={actionLoading[email._id]}
-                            className={`flex items-center w-full px-4 py-2 text-sm text-blue-600 hover:bg-gray-100 transition-colors ${
-                              actionLoading[email._id] ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                          >
-                            <Inbox className="h-4 w-4 mr-2" />
-                            Restore
-                          </button>
-                        </>
-                      ) : currentFolder === 'archived' ? (
-                        <>
-                          <button
-                            onClick={(e) => handleMove(e, email, 'inbox')}
-                            disabled={actionLoading[email._id]}
-                            className={`flex items-center w-full px-4 py-2 text-sm text-blue-600 hover:bg-gray-100 transition-colors ${
-                              actionLoading[email._id] ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                          >
-                            <Inbox className="h-4 w-4 mr-2" />
-                            Restore
-                          </button>
-                          <button
-                            onClick={(e) => handleMove(e, email, 'trash')}
-                            disabled={actionLoading[email._id]}
-                            className={`flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100 transition-colors ${
-                              actionLoading[email._id] ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                          >
-                            <Trash className="h-4 w-4 mr-2" />
-                            Move to Trash
-                          </button>
-                        </>
-                      ) : currentFolder === 'drafts' ? (
-                        <>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowOptions(null);
-                              // Use the parent component's handler instead of window.editDraft
-                              if (typeof window.editDraft === 'function') {
-                                window.editDraft(email);
-                              } else {
-                                // Fallback to dispatch a custom event that MailSystem can listen for
-                                const event = new CustomEvent('edit-draft', { detail: email });
-                                window.dispatchEvent(event);
-                              }
-                            }}
-                            disabled={actionLoading[email._id]}
-                            className={`flex items-center w-full px-4 py-2 text-sm text-blue-600 hover:bg-gray-100 transition-colors ${
-                              actionLoading[email._id] ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                          >
-                            <FileText className="h-4 w-4 mr-2" />
-                            Edit Draft
-                          </button>
-                          <button
-                            onClick={(e) => handleMoveDraftToTrash(e, email)}
-                            disabled={actionLoading[email._id]}
-                            className={`flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100 transition-colors ${
-                              actionLoading[email._id] ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                          >
-                            <Trash className="h-4 w-4 mr-2" />
-                            Move to Trash
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={(e) => handleMove(e, email, 'archived')}
-                            disabled={actionLoading[email._id]}
-                            className={`flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors ${
-                              actionLoading[email._id] ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                          >
-                            <Archive className="h-4 w-4 mr-2" />
-                            Archive
-                          </button>
-                          <button
-                            onClick={(e) => handleMove(e, email, 'trash')}
-                            disabled={actionLoading[email._id]}
-                            className={`flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100 transition-colors ${
-                              actionLoading[email._id] ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                          >
-                            <Trash className="h-4 w-4 mr-2" />
-                            Move to Trash
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
+        {renderEmails()}
       </div>
     </div>
   );

@@ -3,9 +3,16 @@ const Mail = require('../../models/mail/Mail');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 
-// Helper function to generate TeamSync email
-const generateTeamSyncEmail = (email) => {
-  const username = email.split('@')[0].toLowerCase();
+// Helper function to generate TeamSync email based on name and email
+const generateTeamSyncEmail = (name, email) => {
+  // First try to use the name (removing spaces and special characters)
+  let username = name ? name.toLowerCase().replace(/[^a-z0-9]/gi, '') : null;
+  
+  // If name doesn't produce a valid username, fallback to email
+  if (!username || username.length < 3) {
+    username = email.split('@')[0].toLowerCase();
+  }
+  
   return `${username}@teamsync.com`;
 };
 
@@ -14,7 +21,7 @@ const findUserByTeamSyncEmail = async (email) => {
   return await User.findOne({ teamsync_email: email });
 };
 
-// Helper function to create a user with TeamSync email if they don't exist
+// Helper function to handle TeamSync email recipients
 const createUserIfNotExists = async (teamsyncEmail) => {
   try {
     // Check if user already exists
@@ -23,32 +30,31 @@ const createUserIfNotExists = async (teamsyncEmail) => {
       return existingUser;
     }
 
-    // Extract username from email
+    // Extract username from TeamSync email
     const username = teamsyncEmail.split('@')[0];
     
-    // Create a random password
-    const saltRounds = 10;
-    const password_hash = await bcrypt.hash(`password_${Math.floor(Math.random() * 10000)}`, saltRounds);
-    
-    // Create new user
-    const newUser = new User({
-      name: username.charAt(0).toUpperCase() + username.slice(1), // Capitalize first letter
-      email: `${username}@example.com`,
-      teamsync_email: teamsyncEmail,
-      password_hash,
-      state: 'verified' // Set to verified so it can be used immediately
+    // Find any users with a similar name in the system
+    // This helps to avoid having to create placeholder accounts
+    const existingUserByName = await User.findOne({ 
+      name: { $regex: new RegExp(username, 'i') } 
     });
     
-    await newUser.save();
-    console.log(`Created new user for email ${teamsyncEmail}:`, {
-      id: newUser.id,
-      name: newUser.name,
-      teamsync_email: newUser.teamsync_email
-    });
+    if (existingUserByName) {
+      // If there's a user with a similar name, assign the TeamSync email to them
+      // if they don't already have one
+      if (!existingUserByName.teamsync_email) {
+        existingUserByName.teamsync_email = teamsyncEmail;
+        await existingUserByName.save();
+        console.log(`Assigned TeamSync email ${teamsyncEmail} to existing user ${existingUserByName.name}`);
+      }
+      return existingUserByName;
+    }
     
-    return newUser;
+    // We won't create placeholder users with @example.com emails anymore
+    console.log(`No existing user found for TeamSync email: ${teamsyncEmail}`);
+    return null;
   } catch (error) {
-    console.error(`Error creating user for ${teamsyncEmail}:`, error);
+    console.error(`Error handling TeamSync email ${teamsyncEmail}:`, error);
     return null;
   }
 };
@@ -199,7 +205,7 @@ const mailController = {
       });
 
       // Get sender's TeamSync email
-      const senderEmail = sender.teamsync_email || generateTeamSyncEmail(sender.email);
+      const senderEmail = sender.teamsync_email || generateTeamSyncEmail(sender.name, sender.email);
       
       // Update sender's TeamSync email if it doesn't exist
       if (!sender.teamsync_email) {
@@ -212,6 +218,7 @@ const mailController = {
       const recipientIds = [];
       const recipientNames = [];
       const invalidRecipients = [];
+      const nonExistentUsers = [];
       
       for (const recipientEmail of to) {
         // Validate email format
@@ -225,23 +232,23 @@ const mailController = {
           // Find recipient by TeamSync email or create if not exists
           let recipient = await findUserByTeamSyncEmail(recipientEmail);
           
-          // If recipient doesn't exist, create a new user
+          // If recipient doesn't exist
           if (!recipient) {
-            console.log(`Recipient not found for email: ${recipientEmail}. Creating new user...`);
-            recipient = await createUserIfNotExists(recipientEmail);
-            
-            if (!recipient) {
-              console.log(`Failed to create user for email: ${recipientEmail}`);
-              invalidRecipients.push(recipientEmail);
-              continue;
-            }
+            console.log(`Recipient not found for email: ${recipientEmail}`);
+            // Extract the username to provide better feedback
+            const username = recipientEmail.split('@')[0];
+            nonExistentUsers.push({
+              email: recipientEmail,
+              username: username
+            });
+            continue;
           }
           
-          console.log(`Recipient found/created: ${recipient.name} (${recipient.id})`);
+          console.log(`Recipient found: ${recipient.name} (${recipient.id})`);
           recipientIds.push(recipient.id); // Use the UUID id field, not _id
-          recipientNames.push(recipient.name || recipient.username || 'Unknown User');
+          recipientNames.push(recipient.name || 'TeamSync User');
         } catch (err) {
-          console.error(`Error finding/creating recipient for email ${recipientEmail}:`, err);
+          console.error(`Error finding recipient for email ${recipientEmail}:`, err);
           invalidRecipients.push(recipientEmail);
         }
       }
@@ -249,13 +256,16 @@ const mailController = {
       if (recipientIds.length === 0) {
         return res.status(400).json({ 
           success: false,
-          message: 'No valid recipients found',
-          invalidRecipients: invalidRecipients
+          message: nonExistentUsers.length > 0 
+            ? 'Recipients must be registered in the system before you can email them' 
+            : 'No valid recipients found',
+          invalidRecipients: invalidRecipients,
+          nonExistentUsers: nonExistentUsers
         });
       }
 
       // If there were some invalid recipients but at least one valid recipient
-      const hasInvalidRecipients = invalidRecipients.length > 0;
+      const hasInvalidRecipients = invalidRecipients.length > 0 || nonExistentUsers.length > 0;
 
       try {
         // Create the email
@@ -312,13 +322,21 @@ const mailController = {
           }
         }
 
+        let responseMessage = 'Email sent successfully';
+        if (hasInvalidRecipients) {
+          if (nonExistentUsers.length > 0) {
+            responseMessage = `Email sent successfully to valid recipients. Some recipients are not registered users yet.`;
+          } else {
+            responseMessage = `Email sent successfully to valid recipients, but some recipients were invalid.`;
+          }
+        }
+
         return res.status(201).json({
           success: true,
-          message: hasInvalidRecipients 
-            ? 'Email sent successfully to valid recipients, but some recipients were invalid' 
-            : 'Email sent successfully',
+          message: responseMessage,
           data: email,
-          invalidRecipients: hasInvalidRecipients ? invalidRecipients : undefined
+          invalidRecipients: invalidRecipients.length > 0 ? invalidRecipients : undefined,
+          nonExistentUsers: nonExistentUsers.length > 0 ? nonExistentUsers : undefined
         });
       } catch (err) {
         console.error('Error creating or saving email:', err);
@@ -356,7 +374,7 @@ const mailController = {
       }
       
       // Get sender's TeamSync email
-      const senderEmail = sender.teamsync_email || generateTeamSyncEmail(sender.email);
+      const senderEmail = sender.teamsync_email || generateTeamSyncEmail(sender.name, sender.email);
       
       // Process recipients if provided
       let recipientIds = [];

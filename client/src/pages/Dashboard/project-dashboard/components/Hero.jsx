@@ -782,8 +782,8 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
                 </div>
                 <div 
                   className={theme.statsCard2 + " p-3 rounded-md cursor-pointer hover:opacity-80 transition-opacity"}
-                  onClick={() => setSidebarSelection("created-tasks")}
-                  title="View created tasks"
+                  onClick={() => setSidebarSelection("tasks")}
+                  title="View tasks"
                 >
                   <FontAwesomeIcon icon={faTable} size="lg" />
                 </div>
@@ -972,17 +972,9 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
           )}
           {selectedSidebar === "tasks" && (
             <div>
-              <h1 className="text-2xl font-semibold">Assigned Tasks</h1>
+              <h1 className="text-2xl font-semibold">Tasks</h1>
               <p className="text-gray-600 text-sm mt-1">
-                Tasks assigned to you
-              </p>
-            </div>
-          )}
-          {selectedSidebar === "created-tasks" && (
-            <div>
-              <h1 className="text-2xl font-semibold">Created Tasks</h1>
-              <p className="text-gray-600 text-sm mt-1">
-                Tasks created by you
+                View and manage your assigned tasks
               </p>
             </div>
           )}
@@ -1033,7 +1025,6 @@ const TaskSuggestion = ({ suggestion, onAccept, onDismiss, theme, delay }) => {
           filterApproved={false}
         />
       )}
-      {selectedSidebar === "created-tasks" && <MyTasksTable type='created' />}
 
       <AddProjectModal isOpen={isModalOpen} onClose={closeModal} />
     </div>

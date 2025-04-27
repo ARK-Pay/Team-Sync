@@ -16,7 +16,8 @@ import {
   CheckCircle,
   RefreshCw,
   X,
-  Clock
+  Clock,
+  MessageCircle
 } from "lucide-react";
 import axios from "axios";
 
@@ -43,6 +44,10 @@ const VideoCallJoin = () => {
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [meetingToDelete, setMeetingToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmails, setInviteEmails] = useState("");
+  const [inviteMessage, setInviteMessage] = useState("");
+  const [isSendingInvites, setIsSendingInvites] = useState(false);
   const navigate = useNavigate();
   const videoRef = React.useRef(null);
 
@@ -395,6 +400,64 @@ const VideoCallJoin = () => {
     }
   };
 
+  // Open invite modal
+  const openInviteModal = () => {
+    // Set default invite message
+    const meetingLink = `${window.location.origin}/video-call/${generatedRoomId || roomId}`;
+    const meetingCode = generatedRoomId || roomId;
+    setInviteMessage(`You've been invited to join a TeamSync video meeting.\n\nMeeting Link: ${meetingLink}\n\nJoin with the code: ${meetingCode}`);
+    setShowInviteModal(true);
+  };
+
+  // Close invite modal
+  const closeInviteModal = () => {
+    setShowInviteModal(false);
+    setInviteEmails("");
+    setInviteMessage("");
+  };
+
+  // Send invites
+  const sendInvites = async () => {
+    setIsSendingInvites(true);
+    
+    try {
+      // Send invites to the provided email addresses
+      console.log("Sending invites to:", inviteEmails);
+      console.log("Invite message:", inviteMessage);
+      
+      // Simulate sending invites
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Show success message
+      alert("Invitations sent successfully");
+      
+      // Close the invite modal
+      closeInviteModal();
+    } catch (error) {
+      console.error("Error sending invites:", error);
+      alert("Failed to send invitations. Please try again.");
+    } finally {
+      setIsSendingInvites(false);
+    }
+  };
+
+  // Copy meeting code to clipboard
+  const copyMeetingCode = () => {
+    const meetingCode = generatedRoomId || roomId;
+    navigator.clipboard.writeText(meetingCode);
+    
+    // Show temporary success message
+    const codeButton = document.getElementById('copy-code-button');
+    if (codeButton) {
+      const originalText = codeButton.innerText;
+      codeButton.innerText = 'Copied!';
+      
+      setTimeout(() => {
+        codeButton.innerText = originalText;
+      }, 2000);
+    }
+  };
+
   return (
     <div className="video-join-container">
       {/* Header */}
@@ -515,7 +578,7 @@ const VideoCallJoin = () => {
                 
                 {/* Share options */}
                 <div className="share-options">
-                  <button className="share-option">
+                  <button className="share-option" onClick={openInviteModal}>
                     <Users size={16} />
                     <span>Invite people</span>
                   </button>
@@ -747,6 +810,75 @@ const VideoCallJoin = () => {
                 disabled={isDeleting}
               >
                 {isDeleting ? "Deleting..." : "Delete Meeting"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Invite People Modal */}
+      {showInviteModal && (
+        <div className="modal-overlay">
+          <div className="invite-modal">
+            <div className="modal-header">
+              <h3>Invite People</h3>
+              <button 
+                className="close-button" 
+                onClick={closeInviteModal}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label htmlFor="invite-emails">
+                  <Users size={16} />
+                  <span>Enter email addresses (comma or newline separated)</span>
+                </label>
+                <textarea 
+                  id="invite-emails"
+                  value={inviteEmails}
+                  onChange={(e) => setInviteEmails(e.target.value)}
+                  className="invite-emails"
+                ></textarea>
+              </div>
+              <div className="form-group">
+                <label htmlFor="invite-message">
+                  <MessageCircle size={16} />
+                  <span>Message</span>
+                </label>
+                <div className="meeting-code-container">
+                  <span className="meeting-code-label">Meeting code: <strong>{generatedRoomId || roomId}</strong></span>
+                  <button 
+                    id="copy-code-button"
+                    onClick={copyMeetingCode} 
+                    className="copy-code-button"
+                  >
+                    <Copy size={14} />
+                    <span>Copy Code</span>
+                  </button>
+                </div>
+                <textarea 
+                  id="invite-message"
+                  value={inviteMessage}
+                  onChange={(e) => setInviteMessage(e.target.value)}
+                  className="invite-message"
+                ></textarea>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="cancel-button"
+                onClick={closeInviteModal}
+              >
+                Cancel
+              </button>
+              <button 
+                className="send-button"
+                onClick={sendInvites}
+                disabled={isSendingInvites}
+              >
+                {isSendingInvites ? "Sending..." : "Send Invitations"}
               </button>
             </div>
           </div>

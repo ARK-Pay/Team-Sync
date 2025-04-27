@@ -9,8 +9,15 @@ const bcrypt = require("bcrypt");
 const { tokenValidationAdmin } = require("../middlewares/AdminMiddlewares");
 
 // Helper function to generate TeamSync email
-const generateTeamSyncEmail = (email) => {
-  const username = email.split('@')[0].toLowerCase();
+const generateTeamSyncEmail = (name, email) => {
+  // First try to use the name (removing spaces and special characters)
+  let username = name ? name.toLowerCase().replace(/[^a-z0-9]/gi, '') : null;
+  
+  // If name doesn't produce a valid username, fallback to email
+  if (!username || username.length < 3) {
+    username = email.split('@')[0].toLowerCase();
+  }
+  
   return `${username}@teamsync.com`;
 };
 
@@ -19,8 +26,8 @@ router.post("/signup", validateUserSignup, async (req, res) => {
         // Destructure the validated data from the request body  
         const { name, email, password } = req.body;
 
-        // Generate TeamSync email
-        const teamsync_email = generateTeamSyncEmail(email);
+        // Generate TeamSync email based on name preferably
+        const teamsync_email = generateTeamSyncEmail(name, email);
 
         // Check if TeamSync email is already taken
         const existingTeamSyncEmail = await User.findOne({ teamsync_email });
@@ -72,8 +79,7 @@ router.post("/signin", validateUserSignin,(req,res)=>{
     
     // Generate TeamSync email if it doesn't exist
     if (!user.teamsync_email) {
-        const username = email.split('@')[0].toLowerCase();
-        user.teamsync_email = `${username}@teamsync.com`;
+        user.teamsync_email = generateTeamSyncEmail(user.name, user.email);
         // Save the updated user asynchronously
         user.save().then(() => {
             console.log(`Updated user's TeamSync email on signin: ${user.teamsync_email}`);
@@ -339,8 +345,7 @@ router.get("/profile", tokenValidation, async (req,res)=>{
 
         // Generate TeamSync email if it doesn't exist
         if (!RequestedUser.teamsync_email) {
-            const username = RequestedUser.email.split('@')[0].toLowerCase();
-            RequestedUser.teamsync_email = `${username}@teamsync.com`;
+            RequestedUser.teamsync_email = generateTeamSyncEmail(RequestedUser.name, RequestedUser.email);
             await RequestedUser.save();
             console.log(`Updated user's TeamSync email: ${RequestedUser.teamsync_email}`);
         }
@@ -407,6 +412,58 @@ router.put("/update-profile-image", tokenValidation, async (req, res) => {
     }
 });
 
+// Update TeamSync email
+router.put("/update-teamsync-email", tokenValidation, async (req, res) => {
+    try {
+        const { teamsync_email } = req.body;
+        
+        // Validate TeamSync email format
+        if (!teamsync_email || !teamsync_email.endsWith('@teamsync.com')) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid TeamSync email format. Must end with @teamsync.com"
+            });
+        }
+        
+        // Get user from request
+        const user = req.user;
+        
+        // Check if this TeamSync email is already in use by another user
+        const existingUser = await User.findOne({ 
+            teamsync_email, 
+            id: { $ne: user.id } 
+        });
+        
+        if (existingUser) {
+            return res.status(400).json({
+                success: false,
+                message: "This TeamSync email is already in use by another user"
+            });
+        }
+        
+        // Update user's TeamSync email
+        user.teamsync_email = teamsync_email;
+        
+        // Save updated user
+        await user.save();
+        
+        console.log(`Updated user's TeamSync email to: ${teamsync_email}`);
+        
+        // Send success response
+        return res.status(200).json({
+            success: true,
+            message: "TeamSync email updated successfully",
+            teamsync_email: user.teamsync_email
+        });
+    } catch (error) {
+        console.error("Error updating TeamSync email:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+});
+
 router.delete("/:user_id",tokenValidationAdmin,async (req,res)=>{
     try {
         //check ifuser_id exists
@@ -452,6 +509,22 @@ router.delete("/:user_id",tokenValidationAdmin,async (req,res)=>{
     }
 });
 
-
+// Get all team members (for task assignment)
+router.get('/team-members', tokenValidation, async (req, res) => {
+  try {
+    // Fetch all users (excluding sensitive fields)
+    const users = await User.find(
+      { state: { $ne: 'pending' } },
+      'id name email created_at status'
+    ).lean();
+    
+    return res.status(200).json(users);
+  } catch (error) {
+    console.error('Error fetching team members:', error);
+    return res.status(500).json({
+      message: 'Internal server error',
+    });
+  }
+});
 
 module.exports = router;

@@ -32,40 +32,85 @@ const MailSystem = () => {
   // Fetch user's TeamSync email
   const fetchUserTeamSyncEmail = async () => {
     try {
+      console.log('Attempting to fetch user profile for TeamSync email...');
+      
+      // Clear any existing value to prevent stale data
+      localStorage.removeItem('teamSyncEmail');
+      
+      // First try to get user info from localStorage
+      const userInfo = localStorage.getItem('userInfo');
+      if (userInfo) {
+        try {
+          const parsedInfo = JSON.parse(userInfo);
+          console.log('userInfo from localStorage:', parsedInfo);
+          
+          if (parsedInfo && parsedInfo.email) {
+            const email = parsedInfo.email;
+            const name = parsedInfo.name || '';
+            
+            // Generate username from email
+            const username = email.split('@')[0].toLowerCase();
+            
+            // Add a random suffix to ensure uniqueness
+            const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+            const teamSyncEmail = `${username}${randomSuffix}@teamsync.com`;
+            
+            console.log('Generated dynamic TeamSync email:', teamSyncEmail);
+            setUserTeamSyncEmail(teamSyncEmail);
+            
+            // Store in localStorage
+            localStorage.setItem('teamSyncEmail', teamSyncEmail);
+            return;
+          }
+        } catch (e) {
+          console.error('Error parsing userInfo from localStorage:', e);
+        }
+      }
+      
+      // If we couldn't get from localStorage, try API
       const response = await axios.get(
         `${API_BASE_URL}/user/profile`,
         getAxiosConfig()
       );
       
-      console.log('User profile response:', response.data);
+      console.log('User profile API response:', response.data);
       
       if (response.data && response.data.success && response.data.user) {
-        // Get TeamSync email directly from the response
-        if (response.data.user.teamsync_email) {
-          setUserTeamSyncEmail(response.data.user.teamsync_email);
-          console.log('User TeamSync email from profile:', response.data.user.teamsync_email);
+        const user = response.data.user;
+        
+        if (user.email) {
+          const email = user.email;
+          const username = email.split('@')[0].toLowerCase();
+          
+          // Add a random suffix
+          const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+          const teamSyncEmail = `${username}${randomSuffix}@teamsync.com`;
+          
+          console.log('Generated TeamSync email from API user:', teamSyncEmail);
+          setUserTeamSyncEmail(teamSyncEmail);
+          
+          // Store in localStorage
+          localStorage.setItem('teamSyncEmail', teamSyncEmail);
           return;
         }
       }
       
-      // Fallback: Try to get email from localStorage and generate TeamSync email
-      const userInfo = localStorage.getItem('userInfo');
-      if (userInfo) {
-        try {
-          const parsedInfo = JSON.parse(userInfo);
-          if (parsedInfo && parsedInfo.email) {
-            const email = parsedInfo.email;
-            const username = email.split('@')[0].toLowerCase();
-            const teamSyncEmail = `${username}@teamsync.com`;
-            setUserTeamSyncEmail(teamSyncEmail);
-            console.log('Generated User TeamSync email from localStorage:', teamSyncEmail);
-          }
-        } catch (e) {
-          console.error('Error parsing user info from localStorage:', e);
-        }
-      }
+      // Last resort: generate a random username
+      const randomUsername = 'user' + Math.floor(Math.random() * 100000).toString();
+      const fallbackEmail = `${randomUsername}@teamsync.com`;
+      console.log('Generated fallback random TeamSync email:', fallbackEmail);
+      setUserTeamSyncEmail(fallbackEmail);
+      localStorage.setItem('teamSyncEmail', fallbackEmail);
+      
     } catch (err) {
       console.error('Error fetching user profile:', err);
+      
+      // Generate a random username as last resort
+      const randomUsername = 'user' + Math.floor(Math.random() * 100000).toString();
+      const fallbackEmail = `${randomUsername}@teamsync.com`;
+      console.log('Generated fallback random TeamSync email after error:', fallbackEmail);
+      setUserTeamSyncEmail(fallbackEmail);
+      localStorage.setItem('teamSyncEmail', fallbackEmail);
     }
   };
 
@@ -183,14 +228,34 @@ const MailSystem = () => {
   };
 
   // Handle compose button click
-  const handleComposeClick = () => {
+  const handleComposeClick = async () => {
     setDraftToEdit(null);
+    
+    // Always generate a new TeamSync email
+    console.log('Generating new TeamSync email for compose...');
+    try {
+      await fetchUserTeamSyncEmail();
+    } catch (error) {
+      console.error('Error fetching TeamSync email:', error);
+      // We'll continue anyway, as ComposeModal has its own fallback logic
+    }
+    
     setShowComposeModal(true);
   };
 
   // Handle edit draft
-  const handleEditDraft = (draft) => {
+  const handleEditDraft = async (draft) => {
     setDraftToEdit(draft);
+    
+    // Generate a new TeamSync email for draft editing
+    console.log('Generating new TeamSync email for draft editing...');
+    try {
+      await fetchUserTeamSyncEmail();
+    } catch (error) {
+      console.error('Error fetching TeamSync email:', error);
+      // We'll continue anyway, as ComposeModal has its own fallback logic
+    }
+    
     setShowComposeModal(true);
   };
 
@@ -347,6 +412,46 @@ const MailSystem = () => {
     }
   };
 
+  // Save TeamSync email to user profile
+  const saveTeamSyncEmailToProfile = async (teamSyncEmail) => {
+    try {
+      console.log('Saving TeamSync email to user profile:', teamSyncEmail);
+      const token = getAuthToken();
+      if (!token) {
+        console.error('No auth token available, cannot save TeamSync email');
+        return;
+      }
+      
+      const response = await axios.put(
+        `${API_BASE_URL}/user/update-teamsync-email`,
+        { teamsync_email: teamSyncEmail },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+      
+      if (response.data && response.data.success) {
+        console.log('Successfully saved TeamSync email to profile');
+        // Update local storage
+        localStorage.setItem('teamSyncEmail', teamSyncEmail);
+      } else {
+        console.error('Failed to save TeamSync email to profile:', response.data);
+      }
+    } catch (err) {
+      console.error('Error saving TeamSync email to profile:', err);
+    }
+  };
+
+  // Effect to save TeamSync email to profile when it's available
+  useEffect(() => {
+    if (userTeamSyncEmail) {
+      // Try to save it to the user's profile
+      saveTeamSyncEmailToProfile(userTeamSyncEmail);
+    }
+  }, [userTeamSyncEmail]);
+
   return (
     <div className="flex h-full bg-gray-100">
       {/* Sidebar */}
@@ -394,13 +499,16 @@ const MailSystem = () => {
 
       {/* Compose Modal */}
       {showComposeModal && (
-        <ComposeModal
-          onClose={handleCloseComposeModal}
-          onSend={handleSendEmail}
-          onSaveDraft={handleSaveDraft}
-          draftData={draftToEdit}
-          userTeamSyncEmail={userTeamSyncEmail}
-        />
+        <>
+          {console.log('Rendering ComposeModal with userTeamSyncEmail:', userTeamSyncEmail)}
+          <ComposeModal
+            onClose={handleCloseComposeModal}
+            onSend={handleSendEmail}
+            onSaveDraft={handleSaveDraft}
+            draftData={draftToEdit}
+            userTeamSyncEmail={userTeamSyncEmail}
+          />
+        </>
       )}
     </div>
   );

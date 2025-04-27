@@ -1700,7 +1700,7 @@ ${actions.map(a => `- ${a}`).join('\n')}`;
               placeholder="Send a message to everyone"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()}
+              onKeyPress={(e) => e.key === 'Enter' && sendChatMessage(e)}
             />
             <button 
               className="send-message-btn"

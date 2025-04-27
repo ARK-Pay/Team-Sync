@@ -69,15 +69,13 @@ const ProjectDashboard = () => {
       case 'created-projects':
         return <UnifiedProjectTable endpoint="my-created-projects" title="Projects I Created" />;
       case 'create-task':
-        return <MyTasksTable type="assigned" />;
+        return <MyTasksTable />;
       case 'project-view':
         return <ProjectView />;
       case 'users-project':
         return <UsersProject />;
       case 'tasks':
-        return <MyTasksTable type="assigned" />;
-      case 'created-tasks':
-        return <MyTasksTable type="created" />;
+        return <MyTasksTable />;
       case 'notifications':
         return <Notifications />;
       case 'access-manager':
