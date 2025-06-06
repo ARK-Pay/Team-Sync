@@ -24,19 +24,6 @@ Before you begin, ensure you have the following installed:
 - npm (v6 or higher)
 - Git
 
-## Installation
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/MentorTeamSync/teamsync_Infosys_Internship_Oct2024.git
-cd teamsync_Infosys_Internship_Oct2024
-```
-
-### 2. Backend Setup
-
-```bash
-# Navigate to backend directory
-cd backend
 
 # Install dependencies
 npm install
